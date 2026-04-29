@@ -1296,7 +1296,6 @@ dependencies = [
  "printpdf",
  "pulldown-cmark",
  "syntect",
- "unicode-width",
 ]
 
 [[package]]

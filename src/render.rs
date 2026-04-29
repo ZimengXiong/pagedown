@@ -3,6 +3,7 @@ use std::{
     fs,
     path::Path,
     process::Command,
+    sync::OnceLock,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -17,7 +18,6 @@ use syntect::{
     highlighting::{Style as SynStyle, ThemeSet},
     parsing::SyntaxSet,
 };
-use unicode_width::UnicodeWidthStr;
 
 use crate::ir::{Alignment, Block, Document, Inline, ListItem, QuoteKind, inlines_to_plain_text};
 
@@ -32,6 +32,7 @@ const TABLE_SIZE: f32 = 9.45;
 const TABLE_LINE: f32 = 13.3;
 const CODE_SIZE: f32 = 9.35;
 const CODE_LINE: f32 = 13.4;
+const LIST_MARKER_GAP: f32 = 12.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MathMode {
@@ -90,7 +91,7 @@ impl Default for RenderOptions {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum FontFace {
     Serif,
     SerifBold,
@@ -133,7 +134,7 @@ struct RenderedMath {
     id: XObjectId,
     width: f32,
     height: f32,
-    y_offset: f32,
+    baseline: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -489,7 +490,7 @@ impl<'a> Renderer<'a> {
     }
 
     fn list(&mut self, ordered: bool, start: u64, items: &[ListItem]) -> Result<()> {
-        let marker_w = 28.0;
+        let marker_w = list_marker_column_width(ordered, start, items, self.options.body_size_pt);
         let item_gap = 4.5;
         let line_h = self.options.body_line_height_pt;
         let style = self.body_style();
@@ -504,6 +505,7 @@ impl<'a> Renderer<'a> {
                 ordered,
                 start + idx as u64,
                 item.checked,
+                marker_w,
                 self.options.margin_x_pt,
                 y,
             );
@@ -515,9 +517,10 @@ impl<'a> Renderer<'a> {
     }
 
     fn footnote(&mut self, label: &str, content: &[Inline]) -> Result<()> {
-        let label_w = 24.0;
         let line_h = 12.2;
         let number = self.footnote_number(label);
+        let label = format!("{number}.");
+        let label_w = measure(&label, FontFace::SansBold, 7.8) + 14.0;
         let style = Style {
             font: FontFace::Serif,
             size: 8.9,
@@ -540,7 +543,7 @@ impl<'a> Renderer<'a> {
             FontFace::SansBold,
             7.8,
             (0.42, 0.47, 0.54),
-            &format!("{number}."),
+            &label,
         );
         self.draw_lines(&lines, self.options.margin_x_pt + label_w, y, line_h);
         self.cursor_y += block_h;
@@ -811,29 +814,20 @@ impl<'a> Renderer<'a> {
         let mut line_y = y;
         for line in lines {
             let mut frag_x = x;
-            let max_text_size = line
-                .fragments
-                .iter()
-                .filter_map(|frag| match frag.kind {
-                    FragmentKind::Text(_) => Some(frag.style.size),
-                    FragmentKind::Math(_) => None,
-                })
-                .fold(0.0, f32::max);
+            let baseline_y = line_baseline_y(line, line_y, line_height);
             for frag in &line.fragments {
                 if let Some(bg) = frag.style.bg {
                     let bg_h = (frag.style.size + 3.4).min(line_height - 2.0);
-                    let bg_y = line_y + (line_height - bg_h) / 2.0;
+                    let bg_y = baseline_y - text_ascent(frag.style.font, frag.style.size) - 1.2;
                     self.rect(frag_x, bg_y, frag.width + frag.style.pad_x * 2.0, bg_h, bg);
                 }
                 let text_x = frag_x + frag.style.pad_x;
                 match &frag.kind {
                     FragmentKind::Text(text) => {
-                        let text_y = line_y
-                            + (max_text_size - frag.style.size).max(0.0)
-                            + frag.style.shift_y;
-                        self.text(
+                        let text_baseline_y = baseline_y + frag.style.shift_y;
+                        self.text_at_baseline(
                             text_x,
-                            text_y,
+                            text_baseline_y,
                             frag.style.font,
                             frag.style.size,
                             frag.style.color,
@@ -842,7 +836,7 @@ impl<'a> Renderer<'a> {
                         if frag.style.underline {
                             self.draw_rule_at(
                                 text_x,
-                                text_y + frag.style.size + 1.7,
+                                text_baseline_y + frag.style.size * 0.12,
                                 decoration_width(frag),
                                 0.45,
                                 frag.style.color,
@@ -851,7 +845,7 @@ impl<'a> Renderer<'a> {
                         if frag.style.strike {
                             self.draw_rule_at(
                                 text_x,
-                                text_y + frag.style.size * 0.62,
+                                text_baseline_y - frag.style.size * 0.30,
                                 decoration_width(frag),
                                 0.45,
                                 frag.style.color,
@@ -859,7 +853,7 @@ impl<'a> Renderer<'a> {
                         }
                     }
                     FragmentKind::Math(math) => {
-                        self.draw_math(math, text_x, line_y + math.y_offset)
+                        self.draw_math(math, text_x, baseline_y - math.baseline)
                     }
                 }
                 frag_x += fragment_advance(frag);
@@ -886,6 +880,41 @@ impl<'a> Renderer<'a> {
                 pos: Point {
                     x: Pt(x),
                     y: Pt(self.options.page_height_pt - y_top - size),
+                },
+            },
+            Op::SetFont {
+                font: PdfFontHandle::Builtin(font.to_builtin()),
+                size: Pt(size),
+            },
+            Op::SetLineHeight {
+                lh: Pt(size * 1.25),
+            },
+            Op::SetFillColor { col: rgb(color) },
+            Op::ShowText {
+                items: vec![TextItem::Text(pdf_safe_text(text))],
+            },
+            Op::EndTextSection,
+        ]);
+    }
+
+    fn text_at_baseline(
+        &mut self,
+        x: f32,
+        baseline_y: f32,
+        font: FontFace,
+        size: f32,
+        color: (f32, f32, f32),
+        text: &str,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        self.ops.extend_from_slice(&[
+            Op::StartTextSection,
+            Op::SetTextCursor {
+                pos: Point {
+                    x: Pt(x),
+                    y: Pt(self.options.page_height_pt - baseline_y),
                 },
             },
             Op::SetFont {
@@ -980,6 +1009,7 @@ impl<'a> Renderer<'a> {
         ordered: bool,
         number: u64,
         checked: Option<bool>,
+        marker_w: f32,
         x: f32,
         y: f32,
     ) {
@@ -1007,13 +1037,22 @@ impl<'a> Renderer<'a> {
                 );
             }
         } else if ordered {
-            self.text(
-                x,
-                y + 0.1,
+            let marker = format!("{number}.");
+            let size = self.options.body_size_pt * 0.86;
+            let width = measure(&marker, FontFace::SansBold, size);
+            let baseline_y = text_baseline_y(
+                y,
+                self.options.body_line_height_pt,
+                FontFace::Serif,
+                self.options.body_size_pt,
+            );
+            self.text_at_baseline(
+                x + marker_w - LIST_MARKER_GAP - width,
+                baseline_y,
                 FontFace::SansBold,
-                self.options.body_size_pt * 0.86,
+                size,
                 color,
-                &format!("{number}."),
+                &marker,
             );
         } else {
             self.rect(x + 5.0, y + 6.2, 3.6, 3.6, color);
@@ -1090,8 +1129,8 @@ impl<'a> Renderer<'a> {
                         atomic: true,
                         underline: false,
                         strike: false,
-                        shift_y: -0.9,
-                        pad_x: 0.95,
+                        shift_y: 0.0,
+                        pad_x: 0.0,
                     },
                 )),
                 Inline::Math(tex) => {
@@ -1108,7 +1147,7 @@ impl<'a> Renderer<'a> {
                             underline: false,
                             strike: false,
                             shift_y: 0.0,
-                            pad_x: 1.0,
+                            pad_x: 0.0,
                         },
                     });
                 }
@@ -1152,7 +1191,7 @@ impl<'a> Renderer<'a> {
                         atomic: true,
                         underline: false,
                         strike: false,
-                        shift_y: -3.2,
+                        shift_y: -base.size * 0.28,
                         pad_x: 0.0,
                     },
                 )),
@@ -1170,7 +1209,7 @@ impl<'a> Renderer<'a> {
                         pad_x: 0.0,
                     };
                     spans.push(Fragment {
-                        width: measure(&text, style.font, style.size) + 3.0,
+                        width: measure(&text, style.font, style.size),
                         kind: FragmentKind::Text(text),
                         style,
                     });
@@ -1203,14 +1242,14 @@ impl<'a> Renderer<'a> {
                 id,
                 width: measure(tex, FontFace::SerifItalic, size).max(8.0),
                 height: size * 1.3,
-                y_offset: 0.0,
+                baseline: size,
             };
         }
         RenderedMath {
             id: XObjectId::new(),
             width: 0.0,
             height: 0.0,
-            y_offset: 0.0,
+            baseline: 0.0,
         }
     }
 
@@ -1222,6 +1261,7 @@ impl<'a> Renderer<'a> {
 
         let svg = tex_to_svg(tex, display)?;
         let (width, height) = svg_size_pt(&svg).unwrap_or((80.0, 18.0));
+        let baseline = svg_baseline_pt(&svg).unwrap_or(height * 0.78);
         let mut warnings = Vec::new();
         let external = Svg::parse(&svg, &mut warnings)
             .map_err(|err| anyhow::anyhow!("failed to parse TeX SVG: {err}"))?;
@@ -1230,11 +1270,7 @@ impl<'a> Renderer<'a> {
             id,
             width,
             height,
-            y_offset: if display {
-                0.0
-            } else {
-                (self.options.body_line_height_pt - height) * 0.58
-            },
+            baseline: if display { height } else { baseline },
         };
         self.math_cache.insert(key, rendered.clone());
         Ok(rendered)
@@ -1427,51 +1463,178 @@ fn tokenize(text: &str) -> Vec<String> {
 }
 
 fn measure(text: &str, font: FontFace, size: f32) -> f32 {
-    if font == FontFace::Mono || font == FontFace::MonoBold {
-        return text.width() as f32 * size * 0.60;
-    }
-
-    let raw = text.chars().fold(0.0, |acc, ch| {
-        let factor = glyph_factor(ch);
-        acc + size * factor
-    });
-    raw * font_measure_adjust(font)
+    let metrics = metric_font(font);
+    text.chars()
+        .map(|ch| {
+            if ch == '\t' {
+                metrics.advance(' ') * 4.0
+            } else {
+                metrics.advance(ch)
+            }
+        })
+        .sum::<f32>()
+        * size
+        / metrics.units_per_em
 }
 
-fn glyph_factor(ch: char) -> f32 {
-    if ch == ' ' {
-        0.34
-    } else if ".,:;!|`'".contains(ch) {
-        0.255
-    } else if "ilI[](){}".contains(ch) {
-        0.31
-    } else if "mwMW@#%&".contains(ch) {
-        0.72
-    } else if ch.is_ascii_uppercase() {
-        0.57
-    } else if ch.is_ascii_digit() {
-        0.47
-    } else {
-        0.44
+fn text_ascent(font: FontFace, size: f32) -> f32 {
+    let metrics = metric_font(font);
+    metrics.ascent * size / metrics.units_per_em
+}
+
+fn text_descent(font: FontFace, size: f32) -> f32 {
+    let metrics = metric_font(font);
+    metrics.descent * size / metrics.units_per_em
+}
+
+fn fragment_ascent(fragment: &Fragment) -> f32 {
+    match &fragment.kind {
+        FragmentKind::Text(_) => text_ascent(fragment.style.font, fragment.style.size),
+        FragmentKind::Math(math) => math.baseline,
     }
 }
 
-fn font_measure_adjust(font: FontFace) -> f32 {
+fn fragment_descent(fragment: &Fragment) -> f32 {
+    match &fragment.kind {
+        FragmentKind::Text(_) => text_descent(fragment.style.font, fragment.style.size),
+        FragmentKind::Math(math) => (math.height - math.baseline).max(0.0),
+    }
+}
+
+fn line_baseline_y(line: &LayoutLine, line_y: f32, line_height: f32) -> f32 {
+    let ascent = line
+        .fragments
+        .iter()
+        .map(fragment_ascent)
+        .fold(0.0, f32::max);
+    let descent = line
+        .fragments
+        .iter()
+        .map(fragment_descent)
+        .fold(0.0, f32::max);
+    line_y + (line_height - ascent - descent).max(0.0) / 2.0 + ascent
+}
+
+fn text_baseline_y(line_y: f32, line_height: f32, font: FontFace, size: f32) -> f32 {
+    let ascent = text_ascent(font, size);
+    let descent = text_descent(font, size);
+    line_y + (line_height - ascent - descent).max(0.0) / 2.0 + ascent
+}
+
+#[derive(Debug)]
+struct MetricFont {
+    units_per_em: f32,
+    ascent: f32,
+    descent: f32,
+    fallback_advance: f32,
+    advances: HashMap<char, f32>,
+}
+
+impl MetricFont {
+    fn advance(&self, ch: char) -> f32 {
+        self.advances
+            .get(&ch)
+            .copied()
+            .unwrap_or(self.fallback_advance)
+    }
+}
+
+fn metric_font(font: FontFace) -> &'static MetricFont {
+    metric_fonts()
+        .get(&font)
+        .expect("all renderer fonts have metrics")
+}
+
+fn metric_fonts() -> &'static HashMap<FontFace, MetricFont> {
+    static METRICS: OnceLock<HashMap<FontFace, MetricFont>> = OnceLock::new();
+    METRICS.get_or_init(|| {
+        let mut fonts = HashMap::new();
+        for font in [
+            FontFace::Serif,
+            FontFace::SerifBold,
+            FontFace::SerifItalic,
+            FontFace::Sans,
+            FontFace::SansBold,
+            FontFace::SansItalic,
+            FontFace::Mono,
+            FontFace::MonoBold,
+        ] {
+            fonts.insert(font, build_metric_font(font));
+        }
+        fonts
+    })
+}
+
+fn build_metric_font(font: FontFace) -> MetricFont {
+    let afm = afm_data(font);
+    let mut advances = HashMap::new();
+    let mut ascent = 800.0;
+    let mut descent = 200.0;
+
+    for line in afm.lines() {
+        if let Some(value) = line.strip_prefix("Ascender ") {
+            ascent = value.trim().parse().unwrap_or(ascent);
+        } else if let Some(value) = line.strip_prefix("Descender ") {
+            let parsed: f32 = value.trim().parse().unwrap_or(-descent);
+            descent = -parsed;
+        } else if line.starts_with("C ") {
+            let mut code = None;
+            let mut width = None;
+            for part in line.split(';') {
+                let part = part.trim();
+                if let Some(value) = part.strip_prefix("C ") {
+                    code = value.trim().parse::<i32>().ok();
+                } else if let Some(value) = part.strip_prefix("WX ") {
+                    width = value.trim().parse::<f32>().ok();
+                }
+            }
+            if let (Some(code), Some(width)) = (code, width) {
+                if (0..=255).contains(&code) {
+                    if let Some(ch) = char::from_u32(code as u32) {
+                        advances.insert(ch, width);
+                    }
+                }
+            }
+        }
+    }
+
+    let fallback_advance = advances.get(&'?').copied().unwrap_or(500.0);
+    MetricFont {
+        units_per_em: 1000.0,
+        ascent,
+        descent,
+        fallback_advance,
+        advances,
+    }
+}
+
+fn afm_data(font: FontFace) -> &'static str {
     match font {
-        FontFace::SerifBold => 0.95,
-        FontFace::SerifItalic => 1.0,
-        FontFace::Sans | FontFace::SansBold | FontFace::SansItalic => 0.98,
-        FontFace::Serif | FontFace::Mono | FontFace::MonoBold => 1.0,
+        FontFace::Serif => include_str!("../assets/afm/Times-Roman.afm"),
+        FontFace::SerifBold => include_str!("../assets/afm/Times-Bold.afm"),
+        FontFace::SerifItalic => include_str!("../assets/afm/Times-Italic.afm"),
+        FontFace::Sans => include_str!("../assets/afm/Helvetica.afm"),
+        FontFace::SansBold => include_str!("../assets/afm/Helvetica-Bold.afm"),
+        FontFace::SansItalic => include_str!("../assets/afm/Helvetica-Oblique.afm"),
+        FontFace::Mono => include_str!("../assets/afm/Courier.afm"),
+        FontFace::MonoBold => include_str!("../assets/afm/Courier-Bold.afm"),
     }
 }
 
 fn fragment_advance(fragment: &Fragment) -> f32 {
-    let width = if fragment.style.underline {
-        decoration_width(fragment)
+    (fragment.width + fragment.style.pad_x * 2.0).max(0.0)
+}
+
+fn list_marker_column_width(ordered: bool, start: u64, items: &[ListItem], body_size: f32) -> f32 {
+    if ordered {
+        let last = start + items.len().saturating_sub(1) as u64;
+        let marker = format!("{last}.");
+        measure(&marker, FontFace::SansBold, body_size * 0.86) + LIST_MARKER_GAP
+    } else if items.iter().any(|item| item.checked.is_some()) {
+        7.6 + LIST_MARKER_GAP + 3.0
     } else {
-        fragment.width
-    };
-    (width + fragment.style.pad_x * 2.0).max(0.0)
+        3.6 + LIST_MARKER_GAP + 5.0
+    }
 }
 
 fn decoration_width(fragment: &Fragment) -> f32 {
@@ -1650,12 +1813,24 @@ fn svg_size_pt(svg: &str) -> Option<(f32, f32)> {
     Some((svg_attr_pt(svg, "width")?, svg_attr_pt(svg, "height")?))
 }
 
+fn svg_baseline_pt(svg: &str) -> Option<f32> {
+    let values = svg_attr(svg, "viewBox")?;
+    let mut parts = values.split_whitespace();
+    let _x_min: f32 = parts.next()?.parse().ok()?;
+    let y_min: f32 = parts.next()?.parse().ok()?;
+    Some((-y_min).max(0.0))
+}
+
 fn svg_attr_pt(svg: &str, attr: &str) -> Option<f32> {
+    svg_attr(svg, attr)?.trim_end_matches("pt").parse().ok()
+}
+
+fn svg_attr<'a>(svg: &'a str, attr: &str) -> Option<&'a str> {
     let needle = format!("{attr}='");
     let start = svg.find(&needle)? + needle.len();
     let rest = &svg[start..];
     let end = rest.find('\'')?;
-    rest[..end].trim_end_matches("pt").parse().ok()
+    Some(&rest[..end])
 }
 
 fn escape_xml(input: &str) -> String {
