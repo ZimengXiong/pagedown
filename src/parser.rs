@@ -45,6 +45,8 @@ struct ActiveList {
     items: Vec<ListItem>,
     current_item: Vec<Inline>,
     current_checked: Option<bool>,
+    current_gap_before: bool,
+    previous_item_start: Option<usize>,
     in_item: bool,
 }
 
@@ -74,7 +76,7 @@ pub fn parse_markdown(input: &str) -> Document {
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_GFM);
 
-    let parser = Parser::new_ext(input, options);
+    let parser = Parser::new_ext(input, options).into_offset_iter();
     let mut blocks = Vec::new();
     let mut active_block: Option<ActiveBlock> = None;
     let mut inline_stack: Vec<InlineContainer> = Vec::new();
@@ -84,7 +86,7 @@ pub fn parse_markdown(input: &str) -> Document {
     let mut active_footnote: Option<ActiveFootnote> = None;
     let mut active_table: Option<ActiveTable> = None;
 
-    for event in parser {
+    for (event, range) in parser {
         match event {
             Event::Start(tag) => match tag {
                 Tag::Paragraph => {
@@ -121,6 +123,8 @@ pub fn parse_markdown(input: &str) -> Document {
                         items: Vec::new(),
                         current_item: Vec::new(),
                         current_checked: None,
+                        current_gap_before: false,
+                        previous_item_start: None,
                         in_item: false,
                     });
                 }
@@ -128,6 +132,10 @@ pub fn parse_markdown(input: &str) -> Document {
                     if let Some(list) = &mut active_list {
                         list.current_item = Vec::new();
                         list.current_checked = None;
+                        list.current_gap_before = list.previous_item_start.is_some_and(|start| {
+                            has_blank_line_between(&input[start..range.start])
+                        });
+                        list.previous_item_start = Some(range.start);
                         list.in_item = true;
                     }
                 }
@@ -244,9 +252,11 @@ pub fn parse_markdown(input: &str) -> Document {
                     if let Some(list) = &mut active_list {
                         list.items.push(ListItem {
                             checked: list.current_checked,
+                            gap_before: list.current_gap_before,
                             content: trim_inline_edges(std::mem::take(&mut list.current_item)),
                         });
                         list.current_checked = None;
+                        list.current_gap_before = false;
                         list.in_item = false;
                     }
                 }
@@ -606,6 +616,28 @@ fn is_space_inline(inline: &Inline) -> bool {
     matches!(inline, Inline::Text(text) if text.trim().is_empty())
 }
 
+fn has_blank_line_between(text: &str) -> bool {
+    let mut saw_newline = false;
+    let mut current_line_has_content = false;
+
+    for ch in text.chars() {
+        match ch {
+            '\n' => {
+                if saw_newline && !current_line_has_content {
+                    return true;
+                }
+                saw_newline = true;
+                current_line_has_content = false;
+            }
+            '\r' => {}
+            ch if ch.is_whitespace() => {}
+            _ => current_line_has_content = true,
+        }
+    }
+
+    false
+}
+
 fn text_to_inlines(text: &str) -> Vec<Inline> {
     let mut out = Vec::new();
     let mut rest = text;
@@ -777,6 +809,23 @@ Footnote ref[^why].
                 .iter()
                 .any(|inline| matches!(inline, Inline::Citation(key) if key == "doe2024"))
         );
+    }
+
+    #[test]
+    fn preserves_blank_line_between_same_marker_list_items() {
+        let doc = parse_markdown(
+            r#"- First bullet
+
+- [x] Checked task
+"#,
+        );
+        let Block::List { items, .. } = &doc.blocks[0] else {
+            panic!("expected unordered list");
+        };
+
+        assert_eq!(items.len(), 2);
+        assert!(!items[0].gap_before);
+        assert!(items[1].gap_before);
     }
 
     #[test]

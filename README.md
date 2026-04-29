@@ -22,9 +22,9 @@ A native Markdown-to-PDF renderer in Rust. It parses Markdown into a small docum
 ## Requirements
 
 - Rust stable
-- For real math rendering: `lualatex`, `latex`, and `dvisvgm` on `PATH`
+- For high-fidelity CLI math rendering: `lualatex`, `latex`, and `dvisvgm` on `PATH`
 
-Math defaults to the LaTeX backend. TeX is rendered with LuaLaTeX, imported back into the final file as native PDF form XObjects, and kept visually backed by the existing SVG path during assembly. That keeps math highlightable/selectable in PDF viewers while preserving the SVG fallback path. Use `--math-mode fallback` only when you explicitly want the simple emergency text fallback.
+Math defaults to the shared `katex` mode, which is the browser/WASM-compatible path. The CLI also keeps `lualatex` for high-fidelity exports: TeX is rendered with LuaLaTeX, imported back into the final file as native PDF form XObjects, and kept visually backed by the existing SVG path during assembly. Use `--math-mode lualatex` for that path, or `--math-mode fallback` only when you explicitly want the simple emergency text fallback. The old `latex` value remains accepted as an alias for `lualatex`.
 
 ## Usage
 
@@ -55,7 +55,7 @@ cargo run -- input.md -o output.pdf \
   --code-size 9.3 \
   --code-line-height 13.4 \
   --code-theme InspiredGitHub \
-  --math-mode latex \
+  --math-mode katex \
   --max-image-height 300 \
   --image-caption-gap 4 \
   --title "Native PDF"

@@ -59,6 +59,7 @@ pub struct Table {
 #[derive(Debug, Clone)]
 pub struct ListItem {
     pub checked: Option<bool>,
+    pub gap_before: bool,
     pub content: Vec<Inline>,
 }
 

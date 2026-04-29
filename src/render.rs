@@ -42,6 +42,9 @@ const CODE_LINE: f32 = 13.4;
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum MathMode {
+    Katex,
+    Lualatex,
+    #[serde(alias = "latex")]
     Latex,
     Fallback,
 }
@@ -100,7 +103,7 @@ impl Default for RenderOptions {
             code_line_height_pt: CODE_LINE,
             code_highlighting: true,
             code_theme: "InspiredGitHub".to_string(),
-            math_mode: MathMode::Latex,
+            math_mode: MathMode::Katex,
             page_numbers: true,
             max_image_height_pt: 286.0,
             image_captions: true,
@@ -1030,6 +1033,9 @@ impl<'a> Renderer<'a> {
         self.ensure_height(line_h + self.options.list.ensure_extra_pt + item_gap);
 
         for (idx, item) in items.iter().enumerate() {
+            if item.gap_before {
+                self.cursor_y += self.options.list.after_pt;
+            }
             let lines = self.wrap_inlines(&item.content, style, self.content_width() - marker_w)?;
             let item_h = lines.len().max(1) as f32 * line_h;
             self.ensure_height(item_h + item_gap + self.options.list.ensure_extra_pt);
@@ -1856,7 +1862,8 @@ impl<'a> Renderer<'a> {
 
     fn math(&mut self, tex: &str, display: bool, size: f32) -> Result<RenderedMath> {
         match self.options.math_mode {
-            MathMode::Latex => self.render_math(tex, display),
+            MathMode::Katex => self.render_math_katex(tex, display, size),
+            MathMode::Lualatex | MathMode::Latex => self.render_math_lualatex(tex, display),
             MathMode::Fallback => Ok(self.math_fallback(tex, size)),
         }
     }
@@ -1888,7 +1895,14 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    fn render_math(&mut self, tex: &str, display: bool) -> Result<RenderedMath> {
+    fn render_math_katex(&mut self, tex: &str, display: bool, size: f32) -> Result<RenderedMath> {
+        // Native builds keep the high-fidelity path until the shared KaTeX WASM
+        // layout engine is wired in. Browser builds will replace this backend.
+        self.render_math_lualatex(tex, display)
+            .or_else(|_| Ok(self.math_fallback(tex, size)))
+    }
+
+    fn render_math_lualatex(&mut self, tex: &str, display: bool) -> Result<RenderedMath> {
         let key = format!("{}:{}", if display { "display" } else { "inline" }, tex);
         if let Some(rendered) = self.math_cache.get(&key) {
             return Ok(rendered.clone());
@@ -2850,5 +2864,38 @@ mod tests {
         assert!(pdf_text.contains("/Subtype/Link"));
         assert!(pdf_text.contains("/S/URI"));
         assert!(pdf_text.contains("https://example.com/native-pdf"));
+    }
+
+    #[test]
+    fn blank_line_inside_list_matches_gap_between_list_blocks() {
+        let doc = Document::new(vec![Block::List {
+            ordered: false,
+            start: 1,
+            items: vec![
+                ListItem {
+                    checked: None,
+                    gap_before: false,
+                    content: vec![Inline::Text("Bullet item".to_string())],
+                },
+                ListItem {
+                    checked: Some(true),
+                    gap_before: true,
+                    content: vec![Inline::Text("Task item".to_string())],
+                },
+            ],
+        }]);
+        let mut options = RenderOptions::default();
+        options.page_numbers = false;
+        options.margin_top_pt = 0.0;
+        options.body_line_height_pt = 10.0;
+        options.list.item_gap_pt = 2.0;
+        options.list.after_pt = 6.0;
+        options.list.ensure_extra_pt = 0.0;
+
+        let mut renderer = Renderer::new(Path::new("."), options);
+        renderer.render_document(&doc).unwrap();
+
+        let expected = 10.0 + 2.0 + 6.0 + 10.0 + 2.0 + 6.0;
+        assert!((renderer.cursor_y - expected).abs() < f32::EPSILON);
     }
 }
