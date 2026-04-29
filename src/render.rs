@@ -32,7 +32,11 @@ const TABLE_SIZE: f32 = 9.45;
 const TABLE_LINE: f32 = 13.3;
 const CODE_SIZE: f32 = 9.35;
 const CODE_LINE: f32 = 13.4;
-const LIST_MARKER_GAP: f32 = 12.0;
+const LIST_MARKER_TEXT_GAP: f32 = 8.0;
+const LIST_CHECKBOX_X: f32 = 1.5;
+const LIST_CHECKBOX_Y: f32 = 3.7;
+const LIST_CHECKBOX_SIZE: f32 = 7.6;
+const LIST_BULLET_DIAMETER: f32 = 3.6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MathMode {
@@ -1071,9 +1075,16 @@ impl<'a> Renderer<'a> {
     ) {
         let color = (0.32, 0.38, 0.46);
         if let Some(checked) = checked {
-            let box_x = x + 1.5;
-            let box_y = y + 3.7;
-            self.rect_outline(box_x, box_y, 7.6, 7.6, 0.8, color);
+            let box_x = x + LIST_CHECKBOX_X;
+            let box_y = y + LIST_CHECKBOX_Y;
+            self.rect_outline(
+                box_x,
+                box_y,
+                LIST_CHECKBOX_SIZE,
+                LIST_CHECKBOX_SIZE,
+                0.8,
+                color,
+            );
             if checked {
                 self.draw_line_segment(
                     box_x + 1.6,
@@ -1103,7 +1114,7 @@ impl<'a> Renderer<'a> {
                 self.options.body_size_pt,
             );
             self.text_at_baseline(
-                x + marker_w - LIST_MARKER_GAP - width,
+                x + marker_w - LIST_MARKER_TEXT_GAP - width,
                 baseline_y,
                 FontFace::SansBold,
                 size,
@@ -1111,7 +1122,12 @@ impl<'a> Renderer<'a> {
                 &marker,
             );
         } else {
-            self.draw_round_dot(x + 5.3, y + 7.5, 3.6, color);
+            self.draw_round_dot(
+                x + LIST_CHECKBOX_X + LIST_CHECKBOX_SIZE / 2.0,
+                y + LIST_CHECKBOX_Y + LIST_CHECKBOX_SIZE / 2.0,
+                LIST_BULLET_DIAMETER,
+                color,
+            );
         }
     }
 
@@ -1723,11 +1739,9 @@ fn list_marker_column_width(ordered: bool, start: u64, items: &[ListItem], body_
     if ordered {
         let last = start + items.len().saturating_sub(1) as u64;
         let marker = format!("{last}.");
-        measure(&marker, FontFace::SansBold, body_size * 0.86) + LIST_MARKER_GAP
-    } else if items.iter().any(|item| item.checked.is_some()) {
-        7.6 + LIST_MARKER_GAP + 3.0
+        measure(&marker, FontFace::SansBold, body_size * 0.86) + LIST_MARKER_TEXT_GAP
     } else {
-        3.6 + LIST_MARKER_GAP + 5.0
+        LIST_CHECKBOX_X + LIST_CHECKBOX_SIZE + LIST_MARKER_TEXT_GAP
     }
 }
 
