@@ -756,4 +756,25 @@ Footnote ref[^why].
         );
         assert!(matches!(doc.blocks[3], Block::Footnote { .. }));
     }
+
+    #[test]
+    fn parses_ordered_list_start_numbers() {
+        let doc = parse_markdown(
+            r#"3. Third item
+4. Fourth item
+"#,
+        );
+        let Block::List {
+            ordered,
+            start,
+            items,
+        } = &doc.blocks[0]
+        else {
+            panic!("expected ordered list");
+        };
+
+        assert!(*ordered);
+        assert_eq!(*start, 3);
+        assert_eq!(items.len(), 2);
+    }
 }

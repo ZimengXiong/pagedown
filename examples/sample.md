@@ -17,6 +17,9 @@ Inline code should sit inside the line without throwing off the baseline. Links 
 - [ ] Plain list layout shares the same body rhythm as paragraphs.
 - Citation markers such as [@lamport1994] are styled inline until bibliography resolution exists.
 
+1. Ordered list markers use native numbering instead of browser text layout.
+2. Continuation lines stay aligned with the ordered list body text.
+
 Footnote references render inline[^note].
 
 [^note]: Footnotes are parsed from standard GitHub-style Markdown definitions and rendered in compact note text.

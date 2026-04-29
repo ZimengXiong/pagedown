@@ -108,8 +108,10 @@ struct Style {
     size: f32,
     color: (f32, f32, f32),
     bg: Option<(f32, f32, f32)>,
+    atomic: bool,
     underline: bool,
     strike: bool,
+    shift_y: f32,
     pad_x: f32,
 }
 
@@ -162,6 +164,8 @@ struct Renderer<'a> {
     base_dir: &'a Path,
     options: RenderOptions,
     math_cache: HashMap<String, RenderedMath>,
+    footnote_numbers: HashMap<String, usize>,
+    next_footnote_number: usize,
     syntax_set: SyntaxSet,
     theme_set: ThemeSet,
 }
@@ -177,12 +181,15 @@ impl<'a> Renderer<'a> {
             base_dir,
             options,
             math_cache: HashMap::new(),
+            footnote_numbers: HashMap::new(),
+            next_footnote_number: 1,
             syntax_set: SyntaxSet::load_defaults_newlines(),
             theme_set: ThemeSet::load_defaults(),
         }
     }
 
     fn render_document(&mut self, doc: &Document) -> Result<()> {
+        self.index_footnotes(doc);
         for (idx, block) in doc.blocks.iter().enumerate() {
             let next_keep = doc
                 .blocks
@@ -192,6 +199,24 @@ impl<'a> Renderer<'a> {
             self.render_block(block, idx == 0, next_keep)?;
         }
         Ok(())
+    }
+
+    fn index_footnotes(&mut self, doc: &Document) {
+        for block in &doc.blocks {
+            if let Block::Footnote { label, .. } = block {
+                self.footnote_number(label);
+            }
+        }
+    }
+
+    fn footnote_number(&mut self, label: &str) -> usize {
+        if let Some(number) = self.footnote_numbers.get(label) {
+            return *number;
+        }
+        let number = self.next_footnote_number;
+        self.next_footnote_number += 1;
+        self.footnote_numbers.insert(label.to_string(), number);
+        number
     }
 
     fn finish(mut self) -> Vec<u8> {
@@ -244,8 +269,10 @@ impl<'a> Renderer<'a> {
                 (0.10, 0.14, 0.19)
             },
             bg: None,
+            atomic: false,
             underline: false,
             strike: false,
+            shift_y: 0.0,
             pad_x: 0.0,
         };
         let lines = self.wrap_inlines(content, style, self.content_width())?;
@@ -380,8 +407,10 @@ impl<'a> Renderer<'a> {
             size: self.options.body_size_pt,
             color: (0.13, 0.14, 0.17),
             bg: None,
+            atomic: false,
             underline: false,
             strike: false,
+            shift_y: 0.0,
             pad_x: 0.0,
         }
     }
@@ -430,8 +459,10 @@ impl<'a> Renderer<'a> {
             size: self.options.body_size_pt,
             color: text_color,
             bg: None,
+            atomic: false,
             underline: false,
             strike: false,
+            shift_y: 0.0,
             pad_x: 0.0,
         };
         let lines = self.wrap_inlines(content, style, self.content_width() - pad_x * 2.0)?;
@@ -458,25 +489,23 @@ impl<'a> Renderer<'a> {
     }
 
     fn list(&mut self, ordered: bool, start: u64, items: &[ListItem]) -> Result<()> {
-        let marker_w = 24.0;
+        let marker_w = 28.0;
         let item_gap = 4.5;
         let line_h = self.options.body_line_height_pt;
         let style = self.body_style();
         self.ensure_height(line_h + 12.0);
 
         for (idx, item) in items.iter().enumerate() {
-            let marker = list_marker(ordered, start + idx as u64, item.checked);
             let lines = self.wrap_inlines(&item.content, style, self.content_width() - marker_w)?;
             let item_h = lines.len().max(1) as f32 * line_h;
             self.ensure_height(item_h + item_gap + 8.0);
             let y = self.cursor_y;
-            self.text(
+            self.draw_list_marker(
+                ordered,
+                start + idx as u64,
+                item.checked,
                 self.options.margin_x_pt,
                 y,
-                FontFace::SansBold,
-                self.options.body_size_pt * 0.92,
-                (0.32, 0.38, 0.46),
-                &marker,
             );
             self.draw_lines(&lines, self.options.margin_x_pt + marker_w, y, line_h);
             self.cursor_y += item_h + item_gap;
@@ -488,13 +517,16 @@ impl<'a> Renderer<'a> {
     fn footnote(&mut self, label: &str, content: &[Inline]) -> Result<()> {
         let label_w = 24.0;
         let line_h = 12.2;
+        let number = self.footnote_number(label);
         let style = Style {
             font: FontFace::Serif,
             size: 8.9,
             color: (0.28, 0.31, 0.36),
             bg: None,
+            atomic: false,
             underline: false,
             strike: false,
+            shift_y: 0.0,
             pad_x: 0.0,
         };
         let lines = self.wrap_inlines(content, style, self.content_width() - label_w)?;
@@ -508,7 +540,7 @@ impl<'a> Renderer<'a> {
             FontFace::SansBold,
             7.8,
             (0.42, 0.47, 0.54),
-            &format!("{label}."),
+            &format!("{number}."),
         );
         self.draw_lines(&lines, self.options.margin_x_pt + label_w, y, line_h);
         self.cursor_y += block_h;
@@ -543,8 +575,10 @@ impl<'a> Renderer<'a> {
                         size: self.options.table_size_pt,
                         color: (0.10, 0.13, 0.18),
                         bg: None,
+                        atomic: false,
                         underline: false,
                         strike: false,
+                        shift_y: 0.0,
                         pad_x: 0.0,
                     }
                 } else {
@@ -553,8 +587,10 @@ impl<'a> Renderer<'a> {
                         size: self.options.table_size_pt,
                         color: (0.16, 0.18, 0.22),
                         bg: None,
+                        atomic: false,
                         underline: false,
                         strike: false,
+                        shift_y: 0.0,
                         pad_x: 0.0,
                     }
                 };
@@ -792,7 +828,9 @@ impl<'a> Renderer<'a> {
                 let text_x = frag_x + frag.style.pad_x;
                 match &frag.kind {
                     FragmentKind::Text(text) => {
-                        let text_y = line_y + (max_text_size - frag.style.size).max(0.0);
+                        let text_y = line_y
+                            + (max_text_size - frag.style.size).max(0.0)
+                            + frag.style.shift_y;
                         self.text(
                             text_x,
                             text_y,
@@ -878,7 +916,20 @@ impl<'a> Renderer<'a> {
     }
 
     fn draw_rule_at(&mut self, x: f32, y_top: f32, w: f32, thickness: f32, color: (f32, f32, f32)) {
-        let y = self.options.page_height_pt - y_top;
+        self.draw_line_segment(x, y_top, x + w, y_top, thickness, color);
+    }
+
+    fn draw_line_segment(
+        &mut self,
+        x1: f32,
+        y1_top: f32,
+        x2: f32,
+        y2_top: f32,
+        thickness: f32,
+        color: (f32, f32, f32),
+    ) {
+        let y1 = self.options.page_height_pt - y1_top;
+        let y2 = self.options.page_height_pt - y2_top;
         self.ops.extend_from_slice(&[
             Op::SetOutlineColor { col: rgb(color) },
             Op::SetOutlineThickness { pt: Pt(thickness) },
@@ -889,13 +940,16 @@ impl<'a> Renderer<'a> {
                 line: Line {
                     points: vec![
                         LinePoint {
-                            p: Point { x: Pt(x), y: Pt(y) },
+                            p: Point {
+                                x: Pt(x1),
+                                y: Pt(y1),
+                            },
                             bezier: false,
                         },
                         LinePoint {
                             p: Point {
-                                x: Pt(x + w),
-                                y: Pt(y),
+                                x: Pt(x2),
+                                y: Pt(y2),
                             },
                             bezier: false,
                         },
@@ -904,6 +958,66 @@ impl<'a> Renderer<'a> {
                 },
             },
         ]);
+    }
+
+    fn rect_outline(
+        &mut self,
+        x: f32,
+        y_top: f32,
+        w: f32,
+        h: f32,
+        thickness: f32,
+        color: (f32, f32, f32),
+    ) {
+        self.draw_line_segment(x, y_top, x + w, y_top, thickness, color);
+        self.draw_line_segment(x + w, y_top, x + w, y_top + h, thickness, color);
+        self.draw_line_segment(x + w, y_top + h, x, y_top + h, thickness, color);
+        self.draw_line_segment(x, y_top + h, x, y_top, thickness, color);
+    }
+
+    fn draw_list_marker(
+        &mut self,
+        ordered: bool,
+        number: u64,
+        checked: Option<bool>,
+        x: f32,
+        y: f32,
+    ) {
+        let color = (0.32, 0.38, 0.46);
+        if let Some(checked) = checked {
+            let box_x = x + 1.5;
+            let box_y = y + 3.7;
+            self.rect_outline(box_x, box_y, 7.6, 7.6, 0.8, color);
+            if checked {
+                self.draw_line_segment(
+                    box_x + 1.6,
+                    box_y + 4.0,
+                    box_x + 3.3,
+                    box_y + 5.9,
+                    1.0,
+                    color,
+                );
+                self.draw_line_segment(
+                    box_x + 3.3,
+                    box_y + 5.9,
+                    box_x + 6.3,
+                    box_y + 1.8,
+                    1.0,
+                    color,
+                );
+            }
+        } else if ordered {
+            self.text(
+                x,
+                y + 0.1,
+                FontFace::SansBold,
+                self.options.body_size_pt * 0.86,
+                color,
+                &format!("{number}."),
+            );
+        } else {
+            self.rect(x + 5.0, y + 6.2, 3.6, 3.6, color);
+        }
     }
 
     fn draw_vertical_rule(
@@ -973,8 +1087,10 @@ impl<'a> Renderer<'a> {
                         size: base.size * 0.94,
                         color: (0.05, 0.11, 0.18),
                         bg: Some((0.935, 0.945, 0.958)),
+                        atomic: true,
                         underline: false,
                         strike: false,
+                        shift_y: -0.9,
                         pad_x: 0.95,
                     },
                 )),
@@ -988,8 +1104,10 @@ impl<'a> Renderer<'a> {
                             size: base.size,
                             color: (0.08, 0.18, 0.32),
                             bg: None,
+                            atomic: true,
                             underline: false,
                             strike: false,
+                            shift_y: 0.0,
                             pad_x: 1.0,
                         },
                     });
@@ -1025,30 +1143,34 @@ impl<'a> Renderer<'a> {
                     self.push_inline_spans(content, link_style, spans)?;
                 }
                 Inline::FootnoteRef(label) => spans.push(text_fragment(
-                    label.clone(),
+                    self.footnote_number(label).to_string(),
                     Style {
                         font: FontFace::SansBold,
                         size: base.size * 0.58,
                         color: (0.02, 0.28, 0.62),
                         bg: None,
+                        atomic: true,
                         underline: false,
                         strike: false,
-                        pad_x: -7.0,
+                        shift_y: -3.2,
+                        pad_x: 0.0,
                     },
                 )),
                 Inline::Citation(key) => {
-                    let text = format!("[@{key}]");
+                    let text = format!("({})", citation_label(key));
                     let style = Style {
-                        font: FontFace::Sans,
-                        size: base.size * 0.88,
-                        color: (0.34, 0.26, 0.56),
-                        bg: Some((0.948, 0.942, 0.968)),
+                        font: FontFace::SerifItalic,
+                        size: base.size * 0.96,
+                        color: (0.30, 0.28, 0.40),
+                        bg: None,
+                        atomic: true,
                         underline: false,
                         strike: false,
-                        pad_x: 1.1,
+                        shift_y: 0.0,
+                        pad_x: 0.0,
                     };
                     spans.push(Fragment {
-                        width: measure(&text, style.font, style.size) * 1.16,
+                        width: measure(&text, style.font, style.size) + 3.0,
                         kind: FragmentKind::Text(text),
                         style,
                     });
@@ -1169,7 +1291,7 @@ fn wrap_spans(spans: &[Fragment], max_width: f32) -> Vec<LayoutLine> {
                 push_fragment(&mut lines, &mut current, span.clone(), max_width)
             }
             FragmentKind::Text(text) => {
-                if span.style.bg.is_some() {
+                if span.style.atomic || span.style.bg.is_some() {
                     push_fragment(&mut lines, &mut current, span.clone(), max_width);
                     continue;
                 }
@@ -1262,8 +1384,10 @@ fn same_style(a: Style, b: Style) -> bool {
         && (a.size - b.size).abs() < 0.01
         && a.color == b.color
         && a.bg == b.bg
+        && a.atomic == b.atomic
         && a.underline == b.underline
         && a.strike == b.strike
+        && (a.shift_y - b.shift_y).abs() < 0.01
         && (a.pad_x - b.pad_x).abs() < 0.01
 }
 
@@ -1307,24 +1431,38 @@ fn measure(text: &str, font: FontFace, size: f32) -> f32 {
         return text.width() as f32 * size * 0.60;
     }
 
-    text.chars().fold(0.0, |acc, ch| {
-        let factor = if ch == ' ' {
-            0.34
-        } else if ".,:;!|`'".contains(ch) {
-            0.255
-        } else if "ilI[](){}".contains(ch) {
-            0.31
-        } else if "mwMW@#%&".contains(ch) {
-            0.72
-        } else if ch.is_ascii_uppercase() {
-            0.57
-        } else if ch.is_ascii_digit() {
-            0.47
-        } else {
-            0.44
-        };
+    let raw = text.chars().fold(0.0, |acc, ch| {
+        let factor = glyph_factor(ch);
         acc + size * factor
-    })
+    });
+    raw * font_measure_adjust(font)
+}
+
+fn glyph_factor(ch: char) -> f32 {
+    if ch == ' ' {
+        0.34
+    } else if ".,:;!|`'".contains(ch) {
+        0.255
+    } else if "ilI[](){}".contains(ch) {
+        0.31
+    } else if "mwMW@#%&".contains(ch) {
+        0.72
+    } else if ch.is_ascii_uppercase() {
+        0.57
+    } else if ch.is_ascii_digit() {
+        0.47
+    } else {
+        0.44
+    }
+}
+
+fn font_measure_adjust(font: FontFace) -> f32 {
+    match font {
+        FontFace::SerifBold => 0.95,
+        FontFace::SerifItalic => 1.0,
+        FontFace::Sans | FontFace::SansBold | FontFace::SansItalic => 0.98,
+        FontFace::Serif | FontFace::Mono | FontFace::MonoBold => 1.0,
+    }
 }
 
 fn fragment_advance(fragment: &Fragment) -> f32 {
@@ -1416,15 +1554,24 @@ fn quote_palette(
     }
 }
 
-fn list_marker(ordered: bool, number: u64, checked: Option<bool>) -> String {
-    if let Some(checked) = checked {
-        return if checked { "[x]" } else { "[ ]" }.to_string();
+fn citation_label(key: &str) -> String {
+    let cleaned = key.replace(['_', '-', ':'], " ");
+    if cleaned.len() > 4 {
+        let split = cleaned.len() - 4;
+        let (author, year) = cleaned.split_at(split);
+        if year.chars().all(|ch| ch.is_ascii_digit()) {
+            return format!("{} {}", title_word(author.trim()), year);
+        }
     }
-    if ordered {
-        format!("{number}.")
-    } else {
-        "*".to_string()
-    }
+    title_word(cleaned.trim())
+}
+
+fn title_word(text: &str) -> String {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    format!("{}{}", first.to_uppercase(), chars.as_str())
 }
 
 fn syn_color(style: SynStyle) -> (f32, f32, f32) {
