@@ -32,6 +32,14 @@ Math defaults to the LaTeX backend. That means common TeX packages and construct
 cargo run -- examples/sample.md -o examples/sample.pdf
 ```
 
+Use a TOML config file for full layout control:
+
+```sh
+cargo run -- examples/sample.md -o examples/sample.pdf --config examples/render-config.toml
+```
+
+The config file can be partial. Missing values fall back to the built-in defaults, and CLI flags override config values. `examples/render-config.toml` contains the full default geometry surface: page size, margins, heading scale and spacing, paragraph spacing, code block padding/rules, math block padding, divider width/insets, callout padding/rules, list marker geometry and gaps, table padding/grid widths, image/caption spacing, inline code/link/footnote/citation multipliers, footer placement, and pagination keep heights.
+
 Useful options:
 
 ```sh

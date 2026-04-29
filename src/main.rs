@@ -20,9 +20,13 @@ struct Args {
     #[arg(short, long)]
     output: Option<PathBuf>,
 
+    /// TOML render configuration file. CLI flags override file values.
+    #[arg(short, long)]
+    config: Option<PathBuf>,
+
     /// Page size: letter or a4.
-    #[arg(long, default_value = "letter")]
-    page_size: String,
+    #[arg(long)]
+    page_size: Option<String>,
 
     /// Horizontal page margin in points.
     #[arg(long)]
@@ -69,8 +73,8 @@ struct Args {
     no_code_highlighting: bool,
 
     /// Math backend: latex or fallback.
-    #[arg(long, default_value = "latex")]
-    math_mode: String,
+    #[arg(long)]
+    math_mode: Option<String>,
 
     /// Disable page numbers in the footer.
     #[arg(long)]
@@ -116,17 +120,27 @@ fn main() -> Result<()> {
 }
 
 fn render_options(args: &Args) -> Result<render::RenderOptions> {
-    let mut options = render::RenderOptions::default();
-    match args.page_size.to_ascii_lowercase().as_str() {
-        "letter" => {
-            options.page_width_pt = 612.0;
-            options.page_height_pt = 792.0;
+    let mut options = if let Some(config) = &args.config {
+        let text = std::fs::read_to_string(config)
+            .with_context(|| format!("failed to read config {}", config.display()))?;
+        toml::from_str::<render::RenderOptions>(&text)
+            .with_context(|| format!("failed to parse config {}", config.display()))?
+    } else {
+        render::RenderOptions::default()
+    };
+
+    if let Some(page_size) = &args.page_size {
+        match page_size.to_ascii_lowercase().as_str() {
+            "letter" => {
+                options.page_width_pt = 612.0;
+                options.page_height_pt = 792.0;
+            }
+            "a4" => {
+                options.page_width_pt = 595.28;
+                options.page_height_pt = 841.89;
+            }
+            value => anyhow::bail!("unsupported page size `{value}`; use `letter` or `a4`"),
         }
-        "a4" => {
-            options.page_width_pt = 595.28;
-            options.page_height_pt = 841.89;
-        }
-        value => anyhow::bail!("unsupported page size `{value}`; use `letter` or `a4`"),
     }
 
     if let Some(value) = args.margin_x {
@@ -162,11 +176,13 @@ fn render_options(args: &Args) -> Result<render::RenderOptions> {
     if args.no_code_highlighting {
         options.code_highlighting = false;
     }
-    options.math_mode = match args.math_mode.to_ascii_lowercase().as_str() {
-        "latex" => render::MathMode::Latex,
-        "fallback" => render::MathMode::Fallback,
-        value => anyhow::bail!("unsupported math mode `{value}`; use `latex` or `fallback`"),
-    };
+    if let Some(math_mode) = &args.math_mode {
+        options.math_mode = match math_mode.to_ascii_lowercase().as_str() {
+            "latex" => render::MathMode::Latex,
+            "fallback" => render::MathMode::Fallback,
+            value => anyhow::bail!("unsupported math mode `{value}`; use `latex` or `fallback`"),
+        };
+    }
     if args.no_page_numbers {
         options.page_numbers = false;
     }

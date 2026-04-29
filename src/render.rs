@@ -13,6 +13,7 @@ use printpdf::{
     LinePoint, LinkAnnotation, Mm, Op, PaintMode, PdfDocument, PdfFontHandle, PdfPage,
     PdfSaveOptions, Point, Pt, RawImage, Rect, Rgb, Svg, TextItem, XObjectId, XObjectTransform,
 };
+use serde::Deserialize;
 use syntect::{
     easy::HighlightLines,
     highlighting::{Style as SynStyle, ThemeSet},
@@ -32,19 +33,16 @@ const TABLE_SIZE: f32 = 9.45;
 const TABLE_LINE: f32 = 13.3;
 const CODE_SIZE: f32 = 9.35;
 const CODE_LINE: f32 = 13.4;
-const LIST_MARKER_TEXT_GAP: f32 = 8.0;
-const LIST_CHECKBOX_X: f32 = 1.5;
-const LIST_CHECKBOX_Y: f32 = 3.7;
-const LIST_CHECKBOX_SIZE: f32 = 7.6;
-const LIST_BULLET_DIAMETER: f32 = 3.6;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum MathMode {
     Latex,
     Fallback,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
 pub struct RenderOptions {
     pub page_width_pt: f32,
     pub page_height_pt: f32,
@@ -66,6 +64,19 @@ pub struct RenderOptions {
     pub image_caption_size_pt: f32,
     pub image_caption_gap_pt: f32,
     pub title: String,
+    pub paragraph: ParagraphOptions,
+    pub headings: HeadingOptions,
+    pub code_block: CodeBlockOptions,
+    pub math_block: MathBlockOptions,
+    pub divider: DividerOptions,
+    pub quote: QuoteOptions,
+    pub list: ListOptions,
+    pub footnote: FootnoteOptions,
+    pub table: TableOptions,
+    pub image: ImageOptions,
+    pub inline: InlineOptions,
+    pub footer: FooterOptions,
+    pub pagination: PaginationOptions,
 }
 
 impl Default for RenderOptions {
@@ -91,6 +102,443 @@ impl Default for RenderOptions {
             image_caption_size_pt: 9.2,
             image_caption_gap_pt: 5.0,
             title: "Native Markdown PDF".to_string(),
+            paragraph: ParagraphOptions::default(),
+            headings: HeadingOptions::default(),
+            code_block: CodeBlockOptions::default(),
+            math_block: MathBlockOptions::default(),
+            divider: DividerOptions::default(),
+            quote: QuoteOptions::default(),
+            list: ListOptions::default(),
+            footnote: FootnoteOptions::default(),
+            table: TableOptions::default(),
+            image: ImageOptions::default(),
+            inline: InlineOptions::default(),
+            footer: FooterOptions::default(),
+            pagination: PaginationOptions::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct ParagraphOptions {
+    pub after_pt: f32,
+}
+
+impl Default for ParagraphOptions {
+    fn default() -> Self {
+        Self { after_pt: 11.5 }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct HeadingOptions {
+    pub level1: HeadingLevelOptions,
+    pub level2: HeadingLevelOptions,
+    pub level3: HeadingLevelOptions,
+    pub other: HeadingLevelOptions,
+    pub keep_with_next_level1_to_3_pt: f32,
+    pub keep_with_next_other_pt: f32,
+}
+
+impl Default for HeadingOptions {
+    fn default() -> Self {
+        Self {
+            level1: HeadingLevelOptions {
+                size_pt: 29.4,
+                line_height_pt: 36.0,
+                space_before_pt: 26.0,
+                first_space_before_pt: 0.0,
+                space_after_pt: 14.0,
+            },
+            level2: HeadingLevelOptions {
+                size_pt: 18.35,
+                line_height_pt: 24.0,
+                space_before_pt: 24.0,
+                first_space_before_pt: 0.0,
+                space_after_pt: 9.5,
+            },
+            level3: HeadingLevelOptions {
+                size_pt: 14.2,
+                line_height_pt: 20.0,
+                space_before_pt: 18.0,
+                first_space_before_pt: 18.0,
+                space_after_pt: 7.5,
+            },
+            other: HeadingLevelOptions {
+                size_pt: 12.4,
+                line_height_pt: 18.0,
+                space_before_pt: 15.0,
+                first_space_before_pt: 15.0,
+                space_after_pt: 6.5,
+            },
+            keep_with_next_level1_to_3_pt: 126.0,
+            keep_with_next_other_pt: 70.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(default)]
+pub struct HeadingLevelOptions {
+    pub size_pt: f32,
+    pub line_height_pt: f32,
+    pub space_before_pt: f32,
+    pub first_space_before_pt: f32,
+    pub space_after_pt: f32,
+}
+
+impl Default for HeadingLevelOptions {
+    fn default() -> Self {
+        Self {
+            size_pt: 12.4,
+            line_height_pt: 18.0,
+            space_before_pt: 15.0,
+            first_space_before_pt: 15.0,
+            space_after_pt: 6.5,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct CodeBlockOptions {
+    pub pad_x_pt: f32,
+    pub pad_y_pt: f32,
+    pub title_height_pt: f32,
+    pub title_y_offset_pt: f32,
+    pub title_size_pt: f32,
+    pub after_pt: f32,
+    pub rule_x_offset_pt: f32,
+    pub rule_y_inset_pt: f32,
+    pub rule_total_y_inset_pt: f32,
+    pub rule_thickness_pt: f32,
+}
+
+impl Default for CodeBlockOptions {
+    fn default() -> Self {
+        Self {
+            pad_x_pt: 14.0,
+            pad_y_pt: 13.0,
+            title_height_pt: 14.0,
+            title_y_offset_pt: -1.5,
+            title_size_pt: 7.7,
+            after_pt: 16.0,
+            rule_x_offset_pt: 4.0,
+            rule_y_inset_pt: 10.0,
+            rule_total_y_inset_pt: 20.0,
+            rule_thickness_pt: 2.2,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct MathBlockOptions {
+    pub size_multiplier: f32,
+    pub x_inset_pt: f32,
+    pub content_width_inset_pt: f32,
+    pub vertical_padding_pt: f32,
+    pub draw_y_inset_pt: f32,
+    pub min_math_height_pt: f32,
+    pub after_pt: f32,
+}
+
+impl Default for MathBlockOptions {
+    fn default() -> Self {
+        Self {
+            size_multiplier: 1.18,
+            x_inset_pt: 12.0,
+            content_width_inset_pt: 24.0,
+            vertical_padding_pt: 24.0,
+            draw_y_inset_pt: 12.0,
+            min_math_height_pt: 28.0,
+            after_pt: 15.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct DividerOptions {
+    pub keep_height_pt: f32,
+    pub space_before_pt: f32,
+    pub space_after_pt: f32,
+    pub x_inset_pt: f32,
+    pub thickness_pt: f32,
+}
+
+impl Default for DividerOptions {
+    fn default() -> Self {
+        Self {
+            keep_height_pt: 32.0,
+            space_before_pt: 13.0,
+            space_after_pt: 18.0,
+            x_inset_pt: 0.0,
+            thickness_pt: 0.9,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct QuoteOptions {
+    pub pad_x_pt: f32,
+    pub pad_y_pt: f32,
+    pub title_height_pt: f32,
+    pub title_y_offset_pt: f32,
+    pub title_size_pt: f32,
+    pub after_pt: f32,
+    pub rule_x_offset_pt: f32,
+    pub rule_y_inset_pt: f32,
+    pub rule_total_y_inset_pt: f32,
+    pub rule_thickness_pt: f32,
+}
+
+impl Default for QuoteOptions {
+    fn default() -> Self {
+        Self {
+            pad_x_pt: 16.0,
+            pad_y_pt: 12.0,
+            title_height_pt: 13.0,
+            title_y_offset_pt: -1.0,
+            title_size_pt: 8.4,
+            after_pt: 14.0,
+            rule_x_offset_pt: 4.0,
+            rule_y_inset_pt: 9.0,
+            rule_total_y_inset_pt: 18.0,
+            rule_thickness_pt: 2.2,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct ListOptions {
+    pub item_gap_pt: f32,
+    pub after_pt: f32,
+    pub ensure_extra_pt: f32,
+    pub marker_text_gap_pt: f32,
+    pub checkbox_x_pt: f32,
+    pub checkbox_y_pt: f32,
+    pub checkbox_size_pt: f32,
+    pub checkbox_thickness_pt: f32,
+    pub check_thickness_pt: f32,
+    pub check_start_x_pt: f32,
+    pub check_start_y_pt: f32,
+    pub check_mid_x_pt: f32,
+    pub check_mid_y_pt: f32,
+    pub check_end_x_pt: f32,
+    pub check_end_y_pt: f32,
+    pub bullet_diameter_pt: f32,
+    pub ordered_size_multiplier: f32,
+}
+
+impl Default for ListOptions {
+    fn default() -> Self {
+        Self {
+            item_gap_pt: 4.5,
+            after_pt: 6.0,
+            ensure_extra_pt: 8.0,
+            marker_text_gap_pt: 8.0,
+            checkbox_x_pt: 1.5,
+            checkbox_y_pt: 3.7,
+            checkbox_size_pt: 7.6,
+            checkbox_thickness_pt: 0.8,
+            check_thickness_pt: 1.0,
+            check_start_x_pt: 1.6,
+            check_start_y_pt: 4.0,
+            check_mid_x_pt: 3.3,
+            check_mid_y_pt: 5.9,
+            check_end_x_pt: 6.3,
+            check_end_y_pt: 1.8,
+            bullet_diameter_pt: 3.6,
+            ordered_size_multiplier: 0.86,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct FootnoteOptions {
+    pub line_height_pt: f32,
+    pub label_size_pt: f32,
+    pub label_gap_pt: f32,
+    pub body_size_pt: f32,
+    pub block_extra_height_pt: f32,
+    pub ensure_extra_pt: f32,
+}
+
+impl Default for FootnoteOptions {
+    fn default() -> Self {
+        Self {
+            line_height_pt: 12.2,
+            label_size_pt: 7.8,
+            label_gap_pt: 14.0,
+            body_size_pt: 8.9,
+            block_extra_height_pt: 4.0,
+            ensure_extra_pt: 4.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct TableOptions {
+    pub cell_pad_x_pt: f32,
+    pub cell_pad_y_pt: f32,
+    pub border_thickness_pt: f32,
+    pub after_pt: f32,
+    pub initial_keep_height_pt: f32,
+    pub row_ensure_extra_pt: f32,
+}
+
+impl Default for TableOptions {
+    fn default() -> Self {
+        Self {
+            cell_pad_x_pt: 7.0,
+            cell_pad_y_pt: 7.0,
+            border_thickness_pt: 0.45,
+            after_pt: 16.0,
+            initial_keep_height_pt: 20.0,
+            row_ensure_extra_pt: 2.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct ImageOptions {
+    pub px_to_pt: f32,
+    pub border_outset_pt: f32,
+    pub caption_line_height_multiplier: f32,
+    pub block_after_pt: f32,
+    pub placeholder_height_pt: f32,
+    pub placeholder_after_pt: f32,
+    pub placeholder_label_x_pt: f32,
+    pub placeholder_label_y_pt: f32,
+    pub placeholder_label_size_pt: f32,
+}
+
+impl Default for ImageOptions {
+    fn default() -> Self {
+        Self {
+            px_to_pt: 0.75,
+            border_outset_pt: 1.0,
+            caption_line_height_multiplier: 1.52,
+            block_after_pt: 12.0,
+            placeholder_height_pt: 96.0,
+            placeholder_after_pt: 14.0,
+            placeholder_label_x_pt: 18.0,
+            placeholder_label_y_pt: 40.0,
+            placeholder_label_size_pt: 10.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct InlineOptions {
+    pub code_size_multiplier: f32,
+    pub code_pad_x_pt: f32,
+    pub footnote_ref_size_multiplier: f32,
+    pub footnote_ref_shift_multiplier: f32,
+    pub citation_size_multiplier: f32,
+    pub link_hit_padding_pt: f32,
+    pub link_hit_extra_height_pt: f32,
+    pub underline_offset_multiplier: f32,
+    pub strike_offset_multiplier: f32,
+    pub decoration_thickness_pt: f32,
+    pub inline_bg_height_extra_pt: f32,
+    pub inline_bg_line_height_inset_pt: f32,
+    pub inline_bg_y_offset_pt: f32,
+    pub serif_decoration_width_multiplier: f32,
+    pub sans_decoration_width_multiplier: f32,
+    pub mono_decoration_width_multiplier: f32,
+}
+
+impl Default for InlineOptions {
+    fn default() -> Self {
+        Self {
+            code_size_multiplier: 0.94,
+            code_pad_x_pt: 0.0,
+            footnote_ref_size_multiplier: 0.58,
+            footnote_ref_shift_multiplier: -0.28,
+            citation_size_multiplier: 0.96,
+            link_hit_padding_pt: 1.5,
+            link_hit_extra_height_pt: 3.0,
+            underline_offset_multiplier: 0.12,
+            strike_offset_multiplier: -0.30,
+            decoration_thickness_pt: 0.45,
+            inline_bg_height_extra_pt: 3.4,
+            inline_bg_line_height_inset_pt: 2.0,
+            inline_bg_y_offset_pt: -1.2,
+            serif_decoration_width_multiplier: 0.92,
+            sans_decoration_width_multiplier: 0.96,
+            mono_decoration_width_multiplier: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct FooterOptions {
+    pub bottom_offset_pt: f32,
+    pub size_pt: f32,
+}
+
+impl Default for FooterOptions {
+    fn default() -> Self {
+        Self {
+            bottom_offset_pt: 34.0,
+            size_pt: 8.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct PaginationOptions {
+    pub new_page_top_tolerance_pt: f32,
+    pub image_keep_height_pt: f32,
+    pub table_keep_base_pt: f32,
+    pub table_keep_row_pt: f32,
+    pub table_keep_max_rows: usize,
+    pub code_keep_base_pt: f32,
+    pub code_keep_min_lines: usize,
+    pub code_keep_max_lines: usize,
+    pub math_keep_height_pt: f32,
+    pub quote_keep_height_pt: f32,
+    pub list_keep_base_pt: f32,
+    pub list_keep_item_pt: f32,
+    pub list_keep_max_items: usize,
+    pub paragraph_keep_height_pt: f32,
+    pub divider_keep_height_pt: f32,
+    pub heading_keep_height_pt: f32,
+    pub footnote_keep_height_pt: f32,
+}
+
+impl Default for PaginationOptions {
+    fn default() -> Self {
+        Self {
+            new_page_top_tolerance_pt: 1.0,
+            image_keep_height_pt: 285.0,
+            table_keep_base_pt: 70.0,
+            table_keep_row_pt: 34.0,
+            table_keep_max_rows: 2,
+            code_keep_base_pt: 34.0,
+            code_keep_min_lines: 4,
+            code_keep_max_lines: 12,
+            math_keep_height_pt: 72.0,
+            quote_keep_height_pt: 76.0,
+            list_keep_base_pt: 30.0,
+            list_keep_item_pt: 24.0,
+            list_keep_max_items: 3,
+            paragraph_keep_height_pt: 62.0,
+            divider_keep_height_pt: 32.0,
+            heading_keep_height_pt: 82.0,
+            footnote_keep_height_pt: 24.0,
         }
     }
 }
@@ -200,11 +648,40 @@ impl<'a> Renderer<'a> {
             let next_keep = doc
                 .blocks
                 .get(idx + 1)
-                .map(estimated_keep_height)
+                .map(|block| self.estimated_keep_height(block))
                 .unwrap_or(0.0);
             self.render_block(block, idx == 0, next_keep)?;
         }
         Ok(())
+    }
+
+    fn estimated_keep_height(&self, block: &Block) -> f32 {
+        let cfg = &self.options.pagination;
+        match block {
+            Block::Image { .. } => cfg.image_keep_height_pt,
+            Block::Table(table) => {
+                cfg.table_keep_base_pt
+                    + table.rows.len().min(cfg.table_keep_max_rows) as f32 * cfg.table_keep_row_pt
+            }
+            Block::CodeBlock { text, .. } => {
+                let lines = text
+                    .lines()
+                    .count()
+                    .clamp(cfg.code_keep_min_lines, cfg.code_keep_max_lines)
+                    as f32;
+                cfg.code_keep_base_pt + lines * self.options.code_line_height_pt
+            }
+            Block::MathBlock(_) => cfg.math_keep_height_pt,
+            Block::Quote { .. } => cfg.quote_keep_height_pt,
+            Block::List { items, .. } => {
+                cfg.list_keep_base_pt
+                    + items.len().min(cfg.list_keep_max_items) as f32 * cfg.list_keep_item_pt
+            }
+            Block::Paragraph(_) => cfg.paragraph_keep_height_pt,
+            Block::Divider => cfg.divider_keep_height_pt,
+            Block::Heading { .. } => cfg.heading_keep_height_pt,
+            Block::Footnote { .. } => cfg.footnote_keep_height_pt,
+        }
     }
 
     fn index_footnotes(&mut self, doc: &Document) {
@@ -259,10 +736,10 @@ impl<'a> Renderer<'a> {
         next_keep: f32,
     ) -> Result<()> {
         let (size, line, before, after) = match level {
-            1 => (29.4, 36.0, if first { 0.0 } else { 26.0 }, 14.0),
-            2 => (18.35, 24.0, if first { 0.0 } else { 24.0 }, 9.5),
-            3 => (14.2, 20.0, 18.0, 7.5),
-            _ => (12.4, 18.0, 15.0, 6.5),
+            1 => heading_metrics(self.options.headings.level1, first),
+            2 => heading_metrics(self.options.headings.level2, first),
+            3 => heading_metrics(self.options.headings.level3, first),
+            _ => heading_metrics(self.options.headings.other, first),
         };
         self.add_space(before);
 
@@ -284,9 +761,9 @@ impl<'a> Renderer<'a> {
         let lines = self.wrap_inlines(content, style, self.content_width())?;
         let height = lines.len() as f32 * line;
         let keep_with_next = if level <= 3 {
-            next_keep.max(126.0)
+            next_keep.max(self.options.headings.keep_with_next_level1_to_3_pt)
         } else {
-            next_keep.max(70.0)
+            next_keep.max(self.options.headings.keep_with_next_other_pt)
         };
         self.ensure_height(height + after + keep_with_next);
 
@@ -299,38 +776,49 @@ impl<'a> Renderer<'a> {
     fn paragraph(&mut self, content: &[Inline]) -> Result<()> {
         let lines = self.wrap_inlines(content, self.body_style(), self.content_width())?;
         let height = lines.len() as f32 * self.options.body_line_height_pt;
-        self.ensure_height(height + 11.5);
+        self.ensure_height(height + self.options.paragraph.after_pt);
         self.draw_lines(
             &lines,
             self.options.margin_x_pt,
             self.cursor_y,
             self.options.body_line_height_pt,
         );
-        self.cursor_y += height + 11.5;
+        self.cursor_y += height + self.options.paragraph.after_pt;
         Ok(())
     }
 
     fn code_block(&mut self, lang: Option<&str>, text: &str) -> Result<()> {
-        let pad_x = 14.0;
-        let pad_y = 13.0;
-        let title_h = if lang.is_some() { 14.0 } else { 0.0 };
+        let cfg = self.options.code_block.clone();
+        let pad_x = cfg.pad_x_pt;
+        let pad_y = cfg.pad_y_pt;
+        let title_h = if lang.is_some() {
+            cfg.title_height_pt
+        } else {
+            0.0
+        };
         let lines = self.highlighted_code_lines(lang, text);
         let block_h =
             pad_y * 2.0 + title_h + lines.len().max(1) as f32 * self.options.code_line_height_pt;
-        self.ensure_height(block_h + 16.0);
+        self.ensure_height(block_h + cfg.after_pt);
 
         let x = self.options.margin_x_pt;
         let y = self.cursor_y;
         let accent = code_accent(lang);
         self.rect(x, y, self.content_width(), block_h, (0.965, 0.972, 0.982));
-        self.draw_vertical_rule(x + 4.0, y + 10.0, block_h - 20.0, 2.2, accent);
+        self.draw_vertical_rule(
+            x + cfg.rule_x_offset_pt,
+            y + cfg.rule_y_inset_pt,
+            block_h - cfg.rule_total_y_inset_pt,
+            cfg.rule_thickness_pt,
+            accent,
+        );
 
         if let Some(lang) = lang {
             self.text(
                 x + pad_x,
-                y + pad_y - 1.5,
+                y + pad_y + cfg.title_y_offset_pt,
                 FontFace::SansBold,
-                7.7,
+                cfg.title_size_pt,
                 (0.43, 0.49, 0.58),
                 &lang.to_ascii_uppercase(),
             );
@@ -352,7 +840,7 @@ impl<'a> Renderer<'a> {
             }
             line_y += self.options.code_line_height_pt;
         }
-        self.cursor_y += block_h + 16.0;
+        self.cursor_y += block_h + cfg.after_pt;
         Ok(())
     }
 
@@ -422,40 +910,51 @@ impl<'a> Renderer<'a> {
     }
 
     fn math_block(&mut self, tex: &str) -> Result<()> {
-        let math = self.math(tex.trim(), true, self.options.body_size_pt * 1.18)?;
-        let block_h = math.height.max(28.0) + 24.0;
-        self.ensure_height(block_h + 15.0);
+        let cfg = self.options.math_block.clone();
+        let math = self.math(
+            tex.trim(),
+            true,
+            self.options.body_size_pt * cfg.size_multiplier,
+        )?;
+        let block_h = math.height.max(cfg.min_math_height_pt) + cfg.vertical_padding_pt;
+        self.ensure_height(block_h + cfg.after_pt);
 
-        let x = self.options.margin_x_pt + 12.0;
+        let x = self.options.margin_x_pt + cfg.x_inset_pt;
         let y = self.cursor_y;
-        let w = self.content_width() - 24.0;
+        let w = self.content_width() - cfg.content_width_inset_pt;
         self.rect(x, y, w, block_h, (0.955, 0.971, 0.988));
         let start = x + (w - math.width) / 2.0;
-        self.draw_math(&math, start, y + 12.0);
-        self.cursor_y += block_h + 15.0;
+        self.draw_math(&math, start, y + cfg.draw_y_inset_pt);
+        self.cursor_y += block_h + cfg.after_pt;
         Ok(())
     }
 
     fn divider(&mut self) -> Result<()> {
-        self.ensure_height(32.0);
-        self.cursor_y += 13.0;
+        let cfg = self.options.divider.clone();
+        self.ensure_height(cfg.keep_height_pt);
+        self.cursor_y += cfg.space_before_pt;
         self.draw_rule_at(
-            self.options.margin_x_pt,
+            self.options.margin_x_pt + cfg.x_inset_pt,
             self.cursor_y,
-            self.content_width(),
-            0.9,
+            self.content_width() - cfg.x_inset_pt * 2.0,
+            cfg.thickness_pt,
             (0.78, 0.81, 0.86),
         );
-        self.cursor_y += 18.0;
+        self.cursor_y += cfg.space_after_pt;
         Ok(())
     }
 
     fn quote(&mut self, kind: QuoteKind, content: &[Inline]) -> Result<()> {
         let (title, accent, fill, text_color) = quote_palette(kind);
         let x = self.options.margin_x_pt;
-        let pad_x = 16.0;
-        let pad_y = 12.0;
-        let title_h = if title.is_some() { 13.0 } else { 0.0 };
+        let cfg = self.options.quote.clone();
+        let pad_x = cfg.pad_x_pt;
+        let pad_y = cfg.pad_y_pt;
+        let title_h = if title.is_some() {
+            cfg.title_height_pt
+        } else {
+            0.0
+        };
         let style = Style {
             font: if kind == QuoteKind::Regular {
                 FontFace::SerifItalic
@@ -474,37 +973,49 @@ impl<'a> Renderer<'a> {
         let lines = self.wrap_inlines(content, style, self.content_width() - pad_x * 2.0)?;
         let line_h = self.options.body_line_height_pt;
         let block_h = pad_y * 2.0 + title_h + lines.len().max(1) as f32 * line_h;
-        self.ensure_height(block_h + 14.0);
+        self.ensure_height(block_h + cfg.after_pt);
 
         let y = self.cursor_y;
         self.rect(x, y, self.content_width(), block_h, fill);
-        self.draw_vertical_rule(x + 4.0, y + 9.0, block_h - 18.0, 2.2, accent);
+        self.draw_vertical_rule(
+            x + cfg.rule_x_offset_pt,
+            y + cfg.rule_y_inset_pt,
+            block_h - cfg.rule_total_y_inset_pt,
+            cfg.rule_thickness_pt,
+            accent,
+        );
         if let Some(title) = title {
             self.text(
                 x + pad_x,
-                y + pad_y - 1.0,
+                y + pad_y + cfg.title_y_offset_pt,
                 FontFace::SansBold,
-                8.4,
+                cfg.title_size_pt,
                 accent,
                 title,
             );
         }
         self.draw_lines(&lines, x + pad_x, y + pad_y + title_h, line_h);
-        self.cursor_y += block_h + 14.0;
+        self.cursor_y += block_h + cfg.after_pt;
         Ok(())
     }
 
     fn list(&mut self, ordered: bool, start: u64, items: &[ListItem]) -> Result<()> {
-        let marker_w = list_marker_column_width(ordered, start, items, self.options.body_size_pt);
-        let item_gap = 4.5;
+        let marker_w = list_marker_column_width(
+            ordered,
+            start,
+            items,
+            self.options.body_size_pt,
+            &self.options.list,
+        );
+        let item_gap = self.options.list.item_gap_pt;
         let line_h = self.options.body_line_height_pt;
         let style = self.body_style();
-        self.ensure_height(line_h + 12.0);
+        self.ensure_height(line_h + self.options.list.ensure_extra_pt + item_gap);
 
         for (idx, item) in items.iter().enumerate() {
             let lines = self.wrap_inlines(&item.content, style, self.content_width() - marker_w)?;
             let item_h = lines.len().max(1) as f32 * line_h;
-            self.ensure_height(item_h + item_gap + 8.0);
+            self.ensure_height(item_h + item_gap + self.options.list.ensure_extra_pt);
             let y = self.cursor_y;
             self.draw_list_marker(
                 ordered,
@@ -517,18 +1028,19 @@ impl<'a> Renderer<'a> {
             self.draw_lines(&lines, self.options.margin_x_pt + marker_w, y, line_h);
             self.cursor_y += item_h + item_gap;
         }
-        self.cursor_y += 6.0;
+        self.cursor_y += self.options.list.after_pt;
         Ok(())
     }
 
     fn footnote(&mut self, label: &str, content: &[Inline]) -> Result<()> {
-        let line_h = 12.2;
+        let cfg = self.options.footnote.clone();
+        let line_h = cfg.line_height_pt;
         let number = self.footnote_number(label);
         let label = format!("{number}.");
-        let label_w = measure(&label, FontFace::SansBold, 7.8) + 14.0;
+        let label_w = measure(&label, FontFace::SansBold, cfg.label_size_pt) + cfg.label_gap_pt;
         let style = Style {
             font: FontFace::Serif,
-            size: 8.9,
+            size: cfg.body_size_pt,
             color: (0.28, 0.31, 0.36),
             bg: None,
             atomic: false,
@@ -538,8 +1050,8 @@ impl<'a> Renderer<'a> {
             pad_x: 0.0,
         };
         let lines = self.wrap_inlines(content, style, self.content_width() - label_w)?;
-        let block_h = lines.len().max(1) as f32 * line_h + 4.0;
-        self.ensure_height(block_h + 4.0);
+        let block_h = lines.len().max(1) as f32 * line_h + cfg.block_extra_height_pt;
+        self.ensure_height(block_h + cfg.ensure_extra_pt);
 
         let y = self.cursor_y;
         let baseline_y = text_baseline_y(y, line_h, style.font, style.size);
@@ -547,7 +1059,7 @@ impl<'a> Renderer<'a> {
             self.options.margin_x_pt,
             baseline_y,
             FontFace::SansBold,
-            7.8,
+            cfg.label_size_pt,
             (0.42, 0.47, 0.54),
             &label,
         );
@@ -557,14 +1069,15 @@ impl<'a> Renderer<'a> {
     }
 
     fn table(&mut self, table: &crate::ir::Table) -> Result<()> {
+        let cfg = self.options.table.clone();
         let cols = table
             .header
             .len()
             .max(table.rows.iter().map(Vec::len).max().unwrap_or(0))
             .max(1);
         let col_w = self.content_width() / cols as f32;
-        let cell_pad_x = 7.0;
-        let cell_pad_y = 7.0;
+        let cell_pad_x = cfg.cell_pad_x_pt;
+        let cell_pad_y = cfg.cell_pad_y_pt;
         let mut rows = Vec::new();
 
         if !table.header.is_empty() {
@@ -572,7 +1085,7 @@ impl<'a> Renderer<'a> {
         }
         rows.extend(table.rows.iter().cloned().map(|row| (false, row)));
 
-        self.ensure_height(20.0);
+        self.ensure_height(cfg.initial_keep_height_pt);
         for (is_header, row) in rows {
             let mut laid_out_cells = Vec::new();
             let mut row_h: f32 = 0.0;
@@ -611,7 +1124,7 @@ impl<'a> Renderer<'a> {
                 laid_out_cells.push(lines);
             }
 
-            self.ensure_height(row_h + 2.0);
+            self.ensure_height(row_h + cfg.row_ensure_extra_pt);
             let row_y = self.cursor_y;
             if is_header {
                 self.rect(
@@ -625,7 +1138,13 @@ impl<'a> Renderer<'a> {
 
             for col in 0..cols {
                 let x = self.options.margin_x_pt + col as f32 * col_w;
-                self.draw_vertical_rule(x, row_y, row_h, 0.45, (0.78, 0.81, 0.86));
+                self.draw_vertical_rule(
+                    x,
+                    row_y,
+                    row_h,
+                    cfg.border_thickness_pt,
+                    (0.78, 0.81, 0.86),
+                );
                 let align = table
                     .alignments
                     .get(col)
@@ -651,26 +1170,26 @@ impl<'a> Renderer<'a> {
                 self.options.margin_x_pt + self.content_width(),
                 row_y,
                 row_h,
-                0.45,
+                cfg.border_thickness_pt,
                 (0.78, 0.81, 0.86),
             );
             self.draw_rule_at(
                 self.options.margin_x_pt,
                 row_y,
                 self.content_width(),
-                0.45,
+                cfg.border_thickness_pt,
                 (0.78, 0.81, 0.86),
             );
             self.draw_rule_at(
                 self.options.margin_x_pt,
                 row_y + row_h,
                 self.content_width(),
-                0.45,
+                cfg.border_thickness_pt,
                 (0.78, 0.81, 0.86),
             );
             self.cursor_y += row_h;
         }
-        self.cursor_y += 16.0;
+        self.cursor_y += cfg.after_pt;
         Ok(())
     }
 
@@ -687,8 +1206,9 @@ impl<'a> Renderer<'a> {
         let mut warnings = Vec::new();
         let raw = RawImage::decode_from_bytes(&bytes, &mut warnings)
             .map_err(|err| anyhow::anyhow!("failed to decode image {}: {err}", path.display()))?;
-        let natural_w = raw.width as f32 * 0.75;
-        let natural_h = raw.height as f32 * 0.75;
+        let cfg = self.options.image.clone();
+        let natural_w = raw.width as f32 * cfg.px_to_pt;
+        let natural_h = raw.height as f32 * cfg.px_to_pt;
         let max_w = self.content_width();
         let max_h = self.options.max_image_height_pt;
         let scale = (max_w / natural_w).min(max_h / natural_h).min(1.0);
@@ -701,20 +1221,20 @@ impl<'a> Renderer<'a> {
             0.0
         };
         let caption_h = if show_caption {
-            self.options.image_caption_size_pt * 1.52
+            self.options.image_caption_size_pt * cfg.caption_line_height_multiplier
         } else {
             0.0
         };
-        let block_h = draw_h + caption_gap + caption_h + 12.0;
+        let block_h = draw_h + caption_gap + caption_h + cfg.block_after_pt;
         self.ensure_height(block_h);
 
         let x = self.options.margin_x_pt + (self.content_width() - draw_w) / 2.0;
         let y = self.cursor_y;
         self.rect(
-            x - 1.0,
-            y - 1.0,
-            draw_w + 2.0,
-            draw_h + 2.0,
+            x - cfg.border_outset_pt,
+            y - cfg.border_outset_pt,
+            draw_w + cfg.border_outset_pt * 2.0,
+            draw_h + cfg.border_outset_pt * 2.0,
             (0.90, 0.91, 0.93),
         );
 
@@ -746,8 +1266,9 @@ impl<'a> Renderer<'a> {
     }
 
     fn placeholder_image(&mut self, src: &str, alt: &str) {
-        let h = 96.0;
-        self.ensure_height(h + 14.0);
+        let cfg = self.options.image.clone();
+        let h = cfg.placeholder_height_pt;
+        self.ensure_height(h + cfg.placeholder_after_pt);
         let y = self.cursor_y;
         self.rect(
             self.options.margin_x_pt,
@@ -758,14 +1279,14 @@ impl<'a> Renderer<'a> {
         );
         let label = if alt.trim().is_empty() { src } else { alt };
         self.text(
-            self.options.margin_x_pt + 18.0,
-            y + 40.0,
+            self.options.margin_x_pt + cfg.placeholder_label_x_pt,
+            y + cfg.placeholder_label_y_pt,
             FontFace::SansBold,
-            10.0,
+            cfg.placeholder_label_size_pt,
             (0.42, 0.47, 0.54),
             label,
         );
-        self.cursor_y += h + 14.0;
+        self.cursor_y += h + cfg.placeholder_after_pt;
     }
 
     fn content_width(&self) -> f32 {
@@ -784,7 +1305,8 @@ impl<'a> Renderer<'a> {
 
     fn ensure_height(&mut self, height: f32) {
         if self.cursor_y + height > self.usable_bottom()
-            && self.cursor_y > self.options.margin_top_pt + 1.0
+            && self.cursor_y
+                > self.options.margin_top_pt + self.options.pagination.new_page_top_tolerance_pt
         {
             self.push_page();
         }
@@ -807,13 +1329,13 @@ impl<'a> Renderer<'a> {
             return;
         }
         let text = format!("Page {}", self.page_number);
-        let size = 8.0;
+        let size = self.options.footer.size_pt;
         let x = self.options.page_width_pt
             - self.options.margin_x_pt
             - measure(&text, FontFace::Sans, size);
         self.text(
             x,
-            self.options.page_height_pt - 34.0,
+            self.options.page_height_pt - self.options.footer.bottom_offset_pt,
             FontFace::Sans,
             size,
             (0.54, 0.58, 0.64),
@@ -828,17 +1350,19 @@ impl<'a> Renderer<'a> {
             let baseline_y = line_baseline_y(line, line_y, line_height);
             for frag in &line.fragments {
                 if let Some(bg) = frag.style.bg {
-                    let bg_h = (frag.style.size + 3.4).min(line_height - 2.0);
-                    let bg_y = baseline_y - text_ascent(frag.style.font, frag.style.size) - 1.2;
+                    let bg_h = (frag.style.size + self.options.inline.inline_bg_height_extra_pt)
+                        .min(line_height - self.options.inline.inline_bg_line_height_inset_pt);
+                    let bg_y = baseline_y - text_ascent(frag.style.font, frag.style.size)
+                        + self.options.inline.inline_bg_y_offset_pt;
                     self.rect(frag_x, bg_y, frag.width + frag.style.pad_x * 2.0, bg_h, bg);
                 }
                 let text_x = frag_x + frag.style.pad_x;
                 if let Some(href) = &frag.link {
-                    let hit_h = link_hit_height(frag);
+                    let hit_h = link_hit_height(frag, &self.options.inline);
                     self.link_annotation(
                         text_x,
-                        baseline_y - link_hit_ascent(frag),
-                        decoration_width(frag),
+                        baseline_y - link_hit_ascent(frag, &self.options.inline),
+                        decoration_width(frag, &self.options.inline),
                         hit_h,
                         href,
                     );
@@ -857,18 +1381,22 @@ impl<'a> Renderer<'a> {
                         if frag.style.underline {
                             self.draw_rule_at(
                                 text_x,
-                                text_baseline_y + frag.style.size * 0.12,
-                                decoration_width(frag),
-                                0.45,
+                                text_baseline_y
+                                    + frag.style.size
+                                        * self.options.inline.underline_offset_multiplier,
+                                decoration_width(frag, &self.options.inline),
+                                self.options.inline.decoration_thickness_pt,
                                 frag.style.color,
                             );
                         }
                         if frag.style.strike {
                             self.draw_rule_at(
                                 text_x,
-                                text_baseline_y - frag.style.size * 0.30,
-                                decoration_width(frag),
-                                0.45,
+                                text_baseline_y
+                                    + frag.style.size
+                                        * self.options.inline.strike_offset_multiplier,
+                                decoration_width(frag, &self.options.inline),
+                                self.options.inline.decoration_thickness_pt,
                                 frag.style.color,
                             );
                         }
@@ -1074,38 +1602,39 @@ impl<'a> Renderer<'a> {
         y: f32,
     ) {
         let color = (0.32, 0.38, 0.46);
+        let cfg = self.options.list.clone();
         if let Some(checked) = checked {
-            let box_x = x + LIST_CHECKBOX_X;
-            let box_y = y + LIST_CHECKBOX_Y;
+            let box_x = x + cfg.checkbox_x_pt;
+            let box_y = y + cfg.checkbox_y_pt;
             self.rect_outline(
                 box_x,
                 box_y,
-                LIST_CHECKBOX_SIZE,
-                LIST_CHECKBOX_SIZE,
-                0.8,
+                cfg.checkbox_size_pt,
+                cfg.checkbox_size_pt,
+                cfg.checkbox_thickness_pt,
                 color,
             );
             if checked {
                 self.draw_line_segment(
-                    box_x + 1.6,
-                    box_y + 4.0,
-                    box_x + 3.3,
-                    box_y + 5.9,
-                    1.0,
+                    box_x + cfg.check_start_x_pt,
+                    box_y + cfg.check_start_y_pt,
+                    box_x + cfg.check_mid_x_pt,
+                    box_y + cfg.check_mid_y_pt,
+                    cfg.check_thickness_pt,
                     color,
                 );
                 self.draw_line_segment(
-                    box_x + 3.3,
-                    box_y + 5.9,
-                    box_x + 6.3,
-                    box_y + 1.8,
-                    1.0,
+                    box_x + cfg.check_mid_x_pt,
+                    box_y + cfg.check_mid_y_pt,
+                    box_x + cfg.check_end_x_pt,
+                    box_y + cfg.check_end_y_pt,
+                    cfg.check_thickness_pt,
                     color,
                 );
             }
         } else if ordered {
             let marker = format!("{number}.");
-            let size = self.options.body_size_pt * 0.86;
+            let size = self.options.body_size_pt * cfg.ordered_size_multiplier;
             let width = measure(&marker, FontFace::SansBold, size);
             let baseline_y = text_baseline_y(
                 y,
@@ -1114,7 +1643,7 @@ impl<'a> Renderer<'a> {
                 self.options.body_size_pt,
             );
             self.text_at_baseline(
-                x + marker_w - LIST_MARKER_TEXT_GAP - width,
+                x + marker_w - cfg.marker_text_gap_pt - width,
                 baseline_y,
                 FontFace::SansBold,
                 size,
@@ -1123,9 +1652,9 @@ impl<'a> Renderer<'a> {
             );
         } else {
             self.draw_round_dot(
-                x + LIST_CHECKBOX_X + LIST_CHECKBOX_SIZE / 2.0,
-                y + LIST_CHECKBOX_Y + LIST_CHECKBOX_SIZE / 2.0,
-                LIST_BULLET_DIAMETER,
+                x + cfg.checkbox_x_pt + cfg.checkbox_size_pt / 2.0,
+                y + cfg.checkbox_y_pt + cfg.checkbox_size_pt / 2.0,
+                cfg.bullet_diameter_pt,
                 color,
             );
         }
@@ -1207,14 +1736,14 @@ impl<'a> Renderer<'a> {
                     code.clone(),
                     Style {
                         font: FontFace::Mono,
-                        size: base.size * 0.94,
+                        size: base.size * self.options.inline.code_size_multiplier,
                         color: (0.05, 0.11, 0.18),
                         bg: Some((0.935, 0.945, 0.958)),
                         atomic: true,
                         underline: false,
                         strike: false,
                         shift_y: 0.0,
-                        pad_x: 0.0,
+                        pad_x: self.options.inline.code_pad_x_pt,
                     },
                 )),
                 Inline::Math(tex) => {
@@ -1273,13 +1802,13 @@ impl<'a> Renderer<'a> {
                     self.footnote_number(label).to_string(),
                     Style {
                         font: FontFace::SansBold,
-                        size: base.size * 0.58,
+                        size: base.size * self.options.inline.footnote_ref_size_multiplier,
                         color: (0.02, 0.28, 0.62),
                         bg: None,
                         atomic: true,
                         underline: false,
                         strike: false,
-                        shift_y: -base.size * 0.28,
+                        shift_y: base.size * self.options.inline.footnote_ref_shift_multiplier,
                         pad_x: 0.0,
                     },
                 )),
@@ -1287,7 +1816,7 @@ impl<'a> Renderer<'a> {
                     let text = format!("({})", citation_label(key));
                     let style = Style {
                         font: FontFace::SerifItalic,
-                        size: base.size * 0.96,
+                        size: base.size * self.options.inline.citation_size_multiplier,
                         color: (0.30, 0.28, 0.40),
                         bg: None,
                         atomic: true,
@@ -1402,6 +1931,19 @@ fn text_fragment(text: String, style: Style) -> Fragment {
         style,
         link: None,
     }
+}
+
+fn heading_metrics(level: HeadingLevelOptions, first: bool) -> (f32, f32, f32, f32) {
+    (
+        level.size_pt,
+        level.line_height_pt,
+        if first {
+            level.first_space_before_pt
+        } else {
+            level.space_before_pt
+        },
+        level.space_after_pt,
+    )
 }
 
 fn wrap_spans(spans: &[Fragment], max_width: f32) -> Vec<LayoutLine> {
@@ -1593,21 +2135,23 @@ fn fragment_descent(fragment: &Fragment) -> f32 {
     }
 }
 
-fn link_hit_ascent(fragment: &Fragment) -> f32 {
+fn link_hit_ascent(fragment: &Fragment, inline: &InlineOptions) -> f32 {
     match &fragment.kind {
-        FragmentKind::Text(_) => text_ascent(fragment.style.font, fragment.style.size) + 1.5,
-        FragmentKind::Math(math) => math.baseline + 1.5,
+        FragmentKind::Text(_) => {
+            text_ascent(fragment.style.font, fragment.style.size) + inline.link_hit_padding_pt
+        }
+        FragmentKind::Math(math) => math.baseline + inline.link_hit_padding_pt,
     }
 }
 
-fn link_hit_height(fragment: &Fragment) -> f32 {
+fn link_hit_height(fragment: &Fragment, inline: &InlineOptions) -> f32 {
     match &fragment.kind {
         FragmentKind::Text(_) => {
             text_ascent(fragment.style.font, fragment.style.size)
                 + text_descent(fragment.style.font, fragment.style.size)
-                + 3.0
+                + inline.link_hit_extra_height_pt
         }
-        FragmentKind::Math(math) => math.height + 3.0,
+        FragmentKind::Math(math) => math.height + inline.link_hit_extra_height_pt,
     }
 }
 
@@ -1735,17 +2279,27 @@ fn fragment_advance(fragment: &Fragment) -> f32 {
     (fragment.width + fragment.style.pad_x * 2.0).max(0.0)
 }
 
-fn list_marker_column_width(ordered: bool, start: u64, items: &[ListItem], body_size: f32) -> f32 {
+fn list_marker_column_width(
+    ordered: bool,
+    start: u64,
+    items: &[ListItem],
+    body_size: f32,
+    list: &ListOptions,
+) -> f32 {
     if ordered {
         let last = start + items.len().saturating_sub(1) as u64;
         let marker = format!("{last}.");
-        measure(&marker, FontFace::SansBold, body_size * 0.86) + LIST_MARKER_TEXT_GAP
+        measure(
+            &marker,
+            FontFace::SansBold,
+            body_size * list.ordered_size_multiplier,
+        ) + list.marker_text_gap_pt
     } else {
-        LIST_CHECKBOX_X + LIST_CHECKBOX_SIZE + LIST_MARKER_TEXT_GAP
+        list.checkbox_x_pt + list.checkbox_size_pt + list.marker_text_gap_pt
     }
 }
 
-fn decoration_width(fragment: &Fragment) -> f32 {
+fn decoration_width(fragment: &Fragment, inline: &InlineOptions) -> f32 {
     let FragmentKind::Text(text) = &fragment.kind else {
         return fragment.width;
     };
@@ -1753,9 +2307,13 @@ fn decoration_width(fragment: &Fragment) -> f32 {
     let width = measure(trimmed, fragment.style.font, fragment.style.size);
 
     match fragment.style.font {
-        FontFace::Serif | FontFace::SerifBold | FontFace::SerifItalic => width * 0.92,
-        FontFace::Sans | FontFace::SansBold | FontFace::SansItalic => width * 0.96,
-        FontFace::Mono | FontFace::MonoBold => width,
+        FontFace::Serif | FontFace::SerifBold | FontFace::SerifItalic => {
+            width * inline.serif_decoration_width_multiplier
+        }
+        FontFace::Sans | FontFace::SansBold | FontFace::SansItalic => {
+            width * inline.sans_decoration_width_multiplier
+        }
+        FontFace::Mono | FontFace::MonoBold => width * inline.mono_decoration_width_multiplier,
     }
 }
 
@@ -1948,24 +2506,6 @@ fn escape_xml(input: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
-}
-
-fn estimated_keep_height(block: &Block) -> f32 {
-    match block {
-        Block::Image { .. } => 285.0,
-        Block::Table(table) => 70.0 + table.rows.len().min(2) as f32 * 34.0,
-        Block::CodeBlock { text, .. } => {
-            let lines = text.lines().count().clamp(4, 12) as f32;
-            34.0 + lines * CODE_LINE
-        }
-        Block::MathBlock(_) => 72.0,
-        Block::Quote { .. } => 76.0,
-        Block::List { items, .. } => 30.0 + items.len().min(3) as f32 * 24.0,
-        Block::Paragraph(_) => 62.0,
-        Block::Divider => 32.0,
-        Block::Heading { .. } => 82.0,
-        Block::Footnote { .. } => 24.0,
-    }
 }
 
 #[allow(dead_code)]
