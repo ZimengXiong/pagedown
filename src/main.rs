@@ -2,10 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-
-mod ir;
-mod parser;
-mod render;
+use native_markdown_pdf::{parser, render};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -72,7 +69,7 @@ struct Args {
     #[arg(long)]
     no_code_highlighting: bool,
 
-    /// Math backend: katex, lualatex, latex, or fallback.
+    /// Math backend: pagetex, lualatex, latex, or fallback.
     #[arg(long)]
     math_mode: Option<String>,
 
@@ -178,12 +175,12 @@ fn render_options(args: &Args) -> Result<render::RenderOptions> {
     }
     if let Some(math_mode) = &args.math_mode {
         options.math_mode = match math_mode.to_ascii_lowercase().as_str() {
-            "katex" => render::MathMode::Katex,
+            "pagetex" | "katex" => render::MathMode::Pagetex,
             "lualatex" => render::MathMode::Lualatex,
             "latex" => render::MathMode::Latex,
             "fallback" => render::MathMode::Fallback,
             value => anyhow::bail!(
-                "unsupported math mode `{value}`; use `katex`, `lualatex`, `latex`, or `fallback`"
+                "unsupported math mode `{value}`; use `pagetex`, `lualatex`, `latex`, or `fallback`"
             ),
         };
     }

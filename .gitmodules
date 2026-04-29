@@ -1,0 +1,3 @@
+[submodule "pagetex"]
+	path = pagetex
+	url = git@github.com:ZimengXiong/pagetex.git

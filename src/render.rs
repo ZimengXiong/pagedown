@@ -1,5 +1,6 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
+    collections::HashSet,
     fs,
     path::Path,
     process::Command,
@@ -13,10 +14,9 @@ use lopdf::{
     Stream as LoStream,
 };
 use printpdf::{
-    Actions, BorderArray, BuiltinFont, Color, ColorArray, DictItem, HighlightingMode, Line,
-    LineCapStyle, LinePoint, LinkAnnotation, Mm, Op, PaintMode, PdfDocument, PdfFontHandle,
-    PdfPage, PdfSaveOptions, Point, Pt, RawImage, Rect, Rgb, Svg, TextItem, XObjectId,
-    XObjectTransform,
+    Actions, BorderArray, BuiltinFont, Color, ColorArray, HighlightingMode, Line, LineCapStyle,
+    LinePoint, LinkAnnotation, Mm, Op, PaintMode, ParsedFont, PdfDocument, PdfFontHandle, PdfPage,
+    PdfSaveOptions, Point, Pt, RawImage, Rect, Rgb, Svg, TextItem, XObjectId, XObjectTransform,
 };
 use serde::Deserialize;
 use syntect::{
@@ -35,6 +35,7 @@ const MARGIN_BOTTOM: f32 = 68.0;
 const BODY_SIZE: f32 = 11.35;
 const BODY_LINE: f32 = 16.65;
 const TABLE_SIZE: f32 = 9.45;
+const LATIN_MODERN_MATH: &[u8] = include_bytes!("../assets/fonts/LatinModernMath.otf");
 const TABLE_LINE: f32 = 13.3;
 const CODE_SIZE: f32 = 9.35;
 const CODE_LINE: f32 = 13.4;
@@ -42,7 +43,8 @@ const CODE_LINE: f32 = 13.4;
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum MathMode {
-    Katex,
+    #[serde(alias = "katex")]
+    Pagetex,
     Lualatex,
     #[serde(alias = "latex")]
     Latex,
@@ -103,13 +105,13 @@ impl Default for RenderOptions {
             code_line_height_pt: CODE_LINE,
             code_highlighting: true,
             code_theme: "InspiredGitHub".to_string(),
-            math_mode: MathMode::Katex,
+            math_mode: MathMode::Pagetex,
             page_numbers: true,
             max_image_height_pt: 286.0,
             image_captions: true,
             image_caption_size_pt: 9.2,
             image_caption_gap_pt: 5.0,
-            title: "Native Markdown PDF".to_string(),
+            title: "Pagedown".to_string(),
             paragraph: ParagraphOptions::default(),
             headings: HeadingOptions::default(),
             code_block: CodeBlockOptions::default(),
@@ -256,7 +258,7 @@ pub struct MathBlockOptions {
 impl Default for MathBlockOptions {
     fn default() -> Self {
         Self {
-            size_multiplier: 1.18,
+            size_multiplier: 0.94,
             x_inset_pt: 12.0,
             content_width_inset_pt: 24.0,
             vertical_padding_pt: 24.0,
@@ -592,10 +594,34 @@ enum FragmentKind {
 
 #[derive(Clone, Debug)]
 struct RenderedMath {
-    id: XObjectId,
+    kind: RenderedMathKind,
     width: f32,
     height: f32,
     baseline: f32,
+}
+
+#[derive(Clone, Debug)]
+enum RenderedMathKind {
+    XObject(XObjectId),
+    Native(Vec<MathDrawCommand>),
+}
+
+#[derive(Clone, Debug)]
+enum MathDrawCommand {
+    Text {
+        text: String,
+        x: f32,
+        baseline: f32,
+        size: f32,
+        font: FontFace,
+        math_font: bool,
+    },
+    Rule {
+        x: f32,
+        y: f32,
+        width: f32,
+        thickness: f32,
+    },
 }
 
 struct MathFormPdf {
@@ -614,11 +640,24 @@ pub fn render_pdf_with_options(
     base_dir: &Path,
     options: RenderOptions,
 ) -> Result<()> {
-    let mut renderer = Renderer::new(base_dir, options);
-    renderer.render_document(doc)?;
-    let bytes = renderer.finish()?;
+    let bytes = render_pdf_bytes_with_options(doc, base_dir, options)?;
     fs::write(output, bytes).with_context(|| format!("failed to write {}", output.display()))?;
     Ok(())
+}
+
+pub fn render_pdf_bytes_with_options(
+    doc: &Document,
+    base_dir: &Path,
+    options: RenderOptions,
+) -> Result<Vec<u8>> {
+    let mut renderer = Renderer::new(base_dir, options);
+    renderer.render_document(doc)?;
+    renderer.finish()
+}
+
+fn load_math_font(doc: &mut PdfDocument) -> Option<printpdf::FontId> {
+    let mut warnings = Vec::new();
+    ParsedFont::from_bytes(LATIN_MODERN_MATH, 0, &mut warnings).map(|font| doc.add_font(&font))
 }
 
 struct Renderer<'a> {
@@ -631,6 +670,7 @@ struct Renderer<'a> {
     options: RenderOptions,
     math_cache: HashMap<String, RenderedMath>,
     math_forms: HashMap<String, MathFormPdf>,
+    math_font: Option<printpdf::FontId>,
     footnote_numbers: HashMap<String, usize>,
     next_footnote_number: usize,
     syntax_set: SyntaxSet,
@@ -639,8 +679,10 @@ struct Renderer<'a> {
 
 impl<'a> Renderer<'a> {
     fn new(base_dir: &'a Path, options: RenderOptions) -> Self {
+        let mut doc = PdfDocument::new(&options.title);
+        let math_font = load_math_font(&mut doc);
         Self {
-            doc: PdfDocument::new(&options.title),
+            doc,
             pages: Vec::new(),
             ops: Vec::new(),
             cursor_y: options.margin_top_pt,
@@ -649,6 +691,7 @@ impl<'a> Renderer<'a> {
             options,
             math_cache: HashMap::new(),
             math_forms: HashMap::new(),
+            math_font,
             footnote_numbers: HashMap::new(),
             next_footnote_number: 1,
             syntax_set: SyntaxSet::load_defaults_newlines(),
@@ -1504,6 +1547,41 @@ impl<'a> Renderer<'a> {
         ]);
     }
 
+    fn external_text_at_baseline(
+        &mut self,
+        x: f32,
+        baseline_y: f32,
+        font_id: printpdf::FontId,
+        size: f32,
+        color: (f32, f32, f32),
+        text: &str,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        self.ops.extend_from_slice(&[
+            Op::StartTextSection,
+            Op::SetTextCursor {
+                pos: Point {
+                    x: Pt(x),
+                    y: Pt(self.options.page_height_pt - baseline_y),
+                },
+            },
+            Op::SetFont {
+                font: PdfFontHandle::External(font_id),
+                size: Pt(size),
+            },
+            Op::SetLineHeight {
+                lh: Pt(size * 1.25),
+            },
+            Op::SetFillColor { col: rgb(color) },
+            Op::ShowText {
+                items: vec![TextItem::Text(text.to_string())],
+            },
+            Op::EndTextSection,
+        ]);
+    }
+
     fn link_annotation(&mut self, x: f32, y_top: f32, w: f32, h: f32, href: &str) {
         if href.trim().is_empty() || w <= 0.0 || h <= 0.0 {
             return;
@@ -1862,7 +1940,7 @@ impl<'a> Renderer<'a> {
 
     fn math(&mut self, tex: &str, display: bool, size: f32) -> Result<RenderedMath> {
         match self.options.math_mode {
-            MathMode::Katex => self.render_math_katex(tex, display, size),
+            MathMode::Pagetex => self.render_math_pagetex(tex, display, size),
             MathMode::Lualatex | MathMode::Latex => self.render_math_lualatex(tex, display),
             MathMode::Fallback => Ok(self.math_fallback(tex, size)),
         }
@@ -1881,25 +1959,75 @@ impl<'a> Renderer<'a> {
         if let Ok(external) = Svg::parse(&svg, &mut warnings) {
             let id = self.doc.add_xobject(&external);
             return RenderedMath {
-                id,
+                kind: RenderedMathKind::XObject(id),
                 width: measure(tex, FontFace::SerifItalic, size).max(8.0),
                 height: size * 1.3,
                 baseline: size,
             };
         }
         RenderedMath {
-            id: XObjectId::new(),
+            kind: RenderedMathKind::Native(Vec::new()),
             width: 0.0,
             height: 0.0,
             baseline: 0.0,
         }
     }
 
-    fn render_math_katex(&mut self, tex: &str, display: bool, size: f32) -> Result<RenderedMath> {
-        // Native builds keep the high-fidelity path until the shared KaTeX WASM
-        // layout engine is wired in. Browser builds will replace this backend.
-        self.render_math_lualatex(tex, display)
-            .or_else(|_| Ok(self.math_fallback(tex, size)))
+    fn render_math_pagetex(&mut self, tex: &str, display: bool, size: f32) -> Result<RenderedMath> {
+        let key = format!(
+            "pagetex:{}:{}",
+            if display { "display" } else { "inline" },
+            tex
+        );
+        if let Some(rendered) = self.math_cache.get(&key) {
+            return Ok(rendered.clone());
+        }
+
+        let layout = pagetex::layout(tex, size, display)?;
+        let commands = layout
+            .commands
+            .into_iter()
+            .map(|command| match command {
+                pagetex::Command::Text {
+                    text,
+                    x,
+                    baseline,
+                    size,
+                    italic,
+                    math_font,
+                } => MathDrawCommand::Text {
+                    text,
+                    x,
+                    baseline: layout.height + baseline,
+                    size,
+                    font: if italic {
+                        FontFace::SerifItalic
+                    } else {
+                        FontFace::Serif
+                    },
+                    math_font,
+                },
+                pagetex::Command::Rule {
+                    x,
+                    y,
+                    width,
+                    thickness,
+                } => MathDrawCommand::Rule {
+                    x,
+                    y: layout.height + y,
+                    width,
+                    thickness,
+                },
+            })
+            .collect();
+        let math = RenderedMath {
+            kind: RenderedMathKind::Native(commands),
+            width: layout.width,
+            height: layout.height + layout.depth,
+            baseline: layout.height,
+        };
+        self.math_cache.insert(key, math.clone());
+        Ok(math)
     }
 
     fn render_math_lualatex(&mut self, tex: &str, display: bool) -> Result<RenderedMath> {
@@ -1930,7 +2058,7 @@ impl<'a> Renderer<'a> {
         let marker = XObjectId::new().0;
         external.stream.dict.insert(
             "NativeMdPdfMath".to_string(),
-            DictItem::String {
+            printpdf::DictItem::String {
                 data: marker.as_bytes().to_vec(),
                 literal: true,
             },
@@ -1939,7 +2067,7 @@ impl<'a> Renderer<'a> {
         self.math_forms
             .insert(marker, MathFormPdf { bytes: pdf.bytes });
         Ok(RenderedMath {
-            id,
+            kind: RenderedMathKind::XObject(id),
             width,
             height,
             baseline: if display { height } else { baseline },
@@ -1955,7 +2083,7 @@ impl<'a> Renderer<'a> {
             .map_err(|err| anyhow::anyhow!("failed to parse TeX SVG: {err}"))?;
         let id = self.doc.add_xobject(&external);
         Ok(RenderedMath {
-            id,
+            kind: RenderedMathKind::XObject(id),
             width,
             height,
             baseline: if display { height } else { baseline },
@@ -1963,24 +2091,86 @@ impl<'a> Renderer<'a> {
     }
 
     fn draw_math(&mut self, math: &RenderedMath, x: f32, y_top: f32) {
-        let y = self.options.page_height_pt - y_top - math.height;
-        self.ops.push(Op::SetFillColor {
-            col: rgb((0.10, 0.12, 0.16)),
-        });
-        self.ops.push(Op::SetOutlineColor {
-            col: rgb((0.10, 0.12, 0.16)),
-        });
-        self.ops.push(Op::UseXobject {
-            id: math.id.clone(),
-            transform: XObjectTransform {
-                translate_x: Some(Pt(x)),
-                translate_y: Some(Pt(y)),
-                scale_x: Some(1.0),
-                scale_y: Some(1.0),
-                dpi: Some(300.0),
-                ..Default::default()
-            },
-        });
+        match &math.kind {
+            RenderedMathKind::XObject(id) => {
+                let y = self.options.page_height_pt - y_top - math.height;
+                self.ops.push(Op::SetFillColor {
+                    col: rgb((0.10, 0.12, 0.16)),
+                });
+                self.ops.push(Op::SetOutlineColor {
+                    col: rgb((0.10, 0.12, 0.16)),
+                });
+                self.ops.push(Op::UseXobject {
+                    id: id.clone(),
+                    transform: XObjectTransform {
+                        translate_x: Some(Pt(x)),
+                        translate_y: Some(Pt(y)),
+                        scale_x: Some(1.0),
+                        scale_y: Some(1.0),
+                        dpi: Some(300.0),
+                        ..Default::default()
+                    },
+                });
+            }
+            RenderedMathKind::Native(commands) => {
+                for command in commands {
+                    match command {
+                        MathDrawCommand::Text {
+                            text,
+                            x: dx,
+                            baseline,
+                            size,
+                            font,
+                            math_font,
+                        } => {
+                            let font_id = self.math_font.clone();
+                            if *math_font {
+                                if let Some(font_id) = font_id {
+                                    self.external_text_at_baseline(
+                                        x + dx,
+                                        y_top + baseline,
+                                        font_id,
+                                        *size,
+                                        (0.10, 0.12, 0.16),
+                                        text,
+                                    );
+                                } else {
+                                    self.text_at_baseline(
+                                        x + dx,
+                                        y_top + baseline,
+                                        *font,
+                                        *size,
+                                        (0.10, 0.12, 0.16),
+                                        text,
+                                    );
+                                }
+                            } else {
+                                self.text_at_baseline(
+                                    x + dx,
+                                    y_top + baseline,
+                                    *font,
+                                    *size,
+                                    (0.10, 0.12, 0.16),
+                                    text,
+                                );
+                            }
+                        }
+                        MathDrawCommand::Rule {
+                            x: dx,
+                            y,
+                            width,
+                            thickness,
+                        } => self.draw_rule_at(
+                            x + dx,
+                            y_top + y,
+                            *width,
+                            *thickness,
+                            (0.10, 0.12, 0.16),
+                        ),
+                    }
+                }
+            }
+        }
     }
 }
 
