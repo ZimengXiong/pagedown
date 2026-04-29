@@ -3,7 +3,9 @@ use pulldown_cmark::{
     Tag, TagEnd,
 };
 
-use crate::ir::{Alignment, Block, Document, Inline, ListItem, QuoteKind, Table};
+use crate::ir::{
+    Alignment, Block, Document, Inline, ListItem, QuoteKind, Table, inlines_to_plain_text,
+};
 
 #[derive(Debug)]
 enum ActiveBlock {
@@ -44,6 +46,7 @@ struct ActiveList {
     start: u64,
     items: Vec<ListItem>,
     current_item: Vec<Inline>,
+    current_children: Vec<Block>,
     current_checked: Option<bool>,
     current_gap_before: bool,
     previous_item_start: Option<usize>,
@@ -68,6 +71,7 @@ struct ActiveTable {
 }
 
 pub fn parse_markdown(input: &str) -> Document {
+    let source = isolate_directive_lines(input);
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_FOOTNOTES);
@@ -76,13 +80,13 @@ pub fn parse_markdown(input: &str) -> Document {
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_GFM);
 
-    let parser = Parser::new_ext(input, options).into_offset_iter();
+    let parser = Parser::new_ext(&source, options).into_offset_iter();
     let mut blocks = Vec::new();
     let mut active_block: Option<ActiveBlock> = None;
     let mut inline_stack: Vec<InlineContainer> = Vec::new();
     let mut active_image: Option<ActiveImage> = None;
     let mut active_quote: Option<ActiveQuote> = None;
-    let mut active_list: Option<ActiveList> = None;
+    let mut active_lists: Vec<ActiveList> = Vec::new();
     let mut active_footnote: Option<ActiveFootnote> = None;
     let mut active_table: Option<ActiveTable> = None;
 
@@ -92,7 +96,7 @@ pub fn parse_markdown(input: &str) -> Document {
                 Tag::Paragraph => {
                     if active_table.as_ref().is_none_or(|table| !table.in_cell)
                         && active_quote.is_none()
-                        && active_list.as_ref().is_none_or(|list| !list.in_item)
+                        && active_lists.last().is_none_or(|list| !list.in_item)
                         && active_footnote.is_none()
                     {
                         active_block = Some(ActiveBlock::Paragraph(Vec::new()));
@@ -117,11 +121,12 @@ pub fn parse_markdown(input: &str) -> Document {
                     });
                 }
                 Tag::List(start) => {
-                    active_list = Some(ActiveList {
+                    active_lists.push(ActiveList {
                         ordered: start.is_some(),
                         start: start.unwrap_or(1),
                         items: Vec::new(),
                         current_item: Vec::new(),
+                        current_children: Vec::new(),
                         current_checked: None,
                         current_gap_before: false,
                         previous_item_start: None,
@@ -129,11 +134,12 @@ pub fn parse_markdown(input: &str) -> Document {
                     });
                 }
                 Tag::Item => {
-                    if let Some(list) = &mut active_list {
+                    if let Some(list) = active_lists.last_mut() {
                         list.current_item = Vec::new();
+                        list.current_children = Vec::new();
                         list.current_checked = None;
                         list.current_gap_before = list.previous_item_start.is_some_and(|start| {
-                            has_blank_line_between(&input[start..range.start])
+                            has_blank_line_between(&source[start..range.start])
                         });
                         list.previous_item_start = Some(range.start);
                         list.in_item = true;
@@ -207,12 +213,12 @@ pub fn parse_markdown(input: &str) -> Document {
                         continue;
                     }
                     if active_quote.is_some()
-                        || active_list.as_ref().is_some_and(|list| list.in_item)
+                        || active_lists.last().is_some_and(|list| list.in_item)
                         || active_footnote.is_some()
                     {
                         push_context_separator(
                             &mut active_quote,
-                            &mut active_list,
+                            &mut active_lists,
                             &mut active_footnote,
                         );
                         continue;
@@ -240,20 +246,26 @@ pub fn parse_markdown(input: &str) -> Document {
                     }
                 }
                 TagEnd::List(_) => {
-                    if let Some(list) = active_list.take() {
-                        blocks.push(Block::List {
+                    if let Some(list) = active_lists.pop() {
+                        let block = Block::List {
                             ordered: list.ordered,
                             start: list.start,
                             items: list.items,
-                        });
+                        };
+                        if let Some(parent) = active_lists.last_mut().filter(|list| list.in_item) {
+                            parent.current_children.push(block);
+                        } else {
+                            blocks.push(block);
+                        }
                     }
                 }
                 TagEnd::Item => {
-                    if let Some(list) = &mut active_list {
+                    if let Some(list) = active_lists.last_mut() {
                         list.items.push(ListItem {
                             checked: list.current_checked,
                             gap_before: list.current_gap_before,
                             content: trim_inline_edges(std::mem::take(&mut list.current_item)),
+                            children: std::mem::take(&mut list.current_children),
                         });
                         list.current_checked = None;
                         list.current_gap_before = false;
@@ -285,7 +297,7 @@ pub fn parse_markdown(input: &str) -> Document {
                             &mut active_block,
                             &mut active_table,
                             &mut active_quote,
-                            &mut active_list,
+                            &mut active_lists,
                             &mut active_footnote,
                             &mut inline_stack,
                             inline,
@@ -347,7 +359,7 @@ pub fn parse_markdown(input: &str) -> Document {
                             &mut active_block,
                             &mut active_table,
                             &mut active_quote,
-                            &mut active_list,
+                            &mut active_lists,
                             &mut active_footnote,
                             &mut inline_stack,
                             inline,
@@ -360,7 +372,7 @@ pub fn parse_markdown(input: &str) -> Document {
                     &mut active_block,
                     &mut active_table,
                     &mut active_quote,
-                    &mut active_list,
+                    &mut active_lists,
                     &mut active_footnote,
                     &mut inline_stack,
                     Inline::Code(text.to_string()),
@@ -371,7 +383,7 @@ pub fn parse_markdown(input: &str) -> Document {
                     &mut active_block,
                     &mut active_table,
                     &mut active_quote,
-                    &mut active_list,
+                    &mut active_lists,
                     &mut active_footnote,
                     &mut inline_stack,
                     Inline::Math(text.to_string()),
@@ -385,7 +397,7 @@ pub fn parse_markdown(input: &str) -> Document {
                         &mut active_block,
                         &mut active_table,
                         &mut active_quote,
-                        &mut active_list,
+                        &mut active_lists,
                         &mut active_footnote,
                         &mut inline_stack,
                         Inline::Math(text.to_string()),
@@ -397,7 +409,7 @@ pub fn parse_markdown(input: &str) -> Document {
                     &mut active_block,
                     &mut active_table,
                     &mut active_quote,
-                    &mut active_list,
+                    &mut active_lists,
                     &mut active_footnote,
                     &mut inline_stack,
                     Inline::FootnoteRef(label.to_string()),
@@ -408,14 +420,14 @@ pub fn parse_markdown(input: &str) -> Document {
                     &mut active_block,
                     &mut active_table,
                     &mut active_quote,
-                    &mut active_list,
+                    &mut active_lists,
                     &mut active_footnote,
                     &mut inline_stack,
                     Inline::Text(" ".to_string()),
                 );
             }
             Event::TaskListMarker(checked) => {
-                if let Some(list) = &mut active_list {
+                if let Some(list) = active_lists.last_mut() {
                     list.current_checked = Some(checked);
                 }
             }
@@ -431,7 +443,7 @@ fn push_inline(
     active_block: &mut Option<ActiveBlock>,
     active_table: &mut Option<ActiveTable>,
     active_quote: &mut Option<ActiveQuote>,
-    active_list: &mut Option<ActiveList>,
+    active_lists: &mut Vec<ActiveList>,
     active_footnote: &mut Option<ActiveFootnote>,
     inline_stack: &mut Vec<InlineContainer>,
     inline: Inline,
@@ -448,7 +460,7 @@ fn push_inline(
         }
     }
 
-    if let Some(list) = active_list {
+    if let Some(list) = active_lists.last_mut() {
         if list.in_item {
             push_inline_vec(&mut list.current_item, inline);
             return;
@@ -523,11 +535,11 @@ fn push_inline_vec(content: &mut Vec<Inline>, inline: Inline) {
 
 fn push_context_separator(
     active_quote: &mut Option<ActiveQuote>,
-    active_list: &mut Option<ActiveList>,
+    active_lists: &mut Vec<ActiveList>,
     active_footnote: &mut Option<ActiveFootnote>,
 ) {
     let separator = Inline::Text(" ".to_string());
-    if let Some(list) = active_list {
+    if let Some(list) = active_lists.last_mut() {
         if list.in_item && !list.current_item.last().is_some_and(is_space_inline) {
             list.current_item.push(separator);
         }
@@ -547,6 +559,11 @@ fn push_context_separator(
 }
 
 fn push_paragraph_or_math(blocks: &mut Vec<Block>, content: Vec<Inline>) {
+    if let Some(block) = directive_block(&content) {
+        blocks.push(block);
+        return;
+    }
+
     let meaningful = content
         .iter()
         .filter(|inline| !matches!(inline, Inline::Text(text) if text.trim().is_empty()))
@@ -561,6 +578,50 @@ fn push_paragraph_or_math(blocks: &mut Vec<Block>, content: Vec<Inline>) {
 
     if !content.is_empty() {
         blocks.push(Block::Paragraph(content));
+    }
+}
+
+fn isolate_directive_lines(input: &str) -> String {
+    let mut output = String::with_capacity(input.len() + 16);
+    for line in input.lines() {
+        if is_directive_line(line) {
+            if !output.ends_with("\n\n") && !output.is_empty() {
+                output.push('\n');
+            }
+            output.push_str(line.trim());
+            output.push_str("\n\n");
+        } else {
+            output.push_str(line);
+            output.push('\n');
+        }
+    }
+    output
+}
+
+fn is_directive_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    (trimmed.starts_with("@title{") || trimmed.starts_with("@sub{"))
+        && trimmed.ends_with('}')
+        && trimmed.matches('{').count() == 1
+        && trimmed.matches('}').count() == 1
+}
+
+fn directive_block(content: &[Inline]) -> Option<Block> {
+    let plain = inlines_to_plain_text(content);
+    let trimmed = plain.trim();
+    let (kind, rest): (&str, &str) = if let Some(rest) = trimmed.strip_prefix("@title{") {
+        ("title", rest)
+    } else if let Some(rest) = trimmed.strip_prefix("@sub{") {
+        ("sub", rest)
+    } else {
+        return None;
+    };
+    let text = rest.strip_suffix('}')?.trim();
+    let content = vec![Inline::Text(text.to_string())];
+    match kind {
+        "title" => Some(Block::Title(content)),
+        "sub" => Some(Block::Subtitle(content)),
+        _ => None,
     }
 }
 
@@ -705,6 +766,18 @@ $$
         assert!(matches!(doc.blocks[3], Block::CodeBlock { .. }));
         assert!(matches!(doc.blocks[4], Block::MathBlock(_)));
         assert!(matches!(doc.blocks[5], Block::Image { .. }));
+    }
+
+    #[test]
+    fn parses_title_and_subtitle_directives() {
+        let doc = parse_markdown("@title{Your Inner Fish}\n@sub{Zimeng Xiong, P7}\n");
+
+        assert!(
+            matches!(&doc.blocks[0], Block::Title(content) if inlines_to_plain_text(content) == "Your Inner Fish")
+        );
+        assert!(
+            matches!(&doc.blocks[1], Block::Subtitle(content) if inlines_to_plain_text(content) == "Zimeng Xiong, P7")
+        );
     }
 
     #[test]
@@ -867,5 +940,45 @@ Footnote ref[^why].
         assert!(*ordered);
         assert_eq!(*start, 3);
         assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn parses_zero_ordered_list_items_with_nested_bullets() {
+        let doc = parse_markdown(
+            r#"0. What kind of scientist is Dr. Shubin?
+   - He is a fish paleontologist.
+
+0. What is the limb pattern?
+   - Pattern: one bone, two bones, many small bones, and digits.
+   - Examples: dog, bird, salamander, human.
+"#,
+        );
+        let Block::List {
+            ordered,
+            start,
+            items,
+        } = &doc.blocks[0]
+        else {
+            panic!("expected ordered list");
+        };
+
+        assert!(*ordered);
+        assert_eq!(*start, 0);
+        assert_eq!(items.len(), 2);
+        assert_eq!(
+            items[0].content[0].plain_text(),
+            "What kind of scientist is Dr. Shubin?"
+        );
+        assert_eq!(items[0].children.len(), 1);
+        let Block::List {
+            ordered,
+            items: child_items,
+            ..
+        } = &items[1].children[0]
+        else {
+            panic!("expected nested answer list");
+        };
+        assert!(!ordered);
+        assert_eq!(child_items.len(), 2);
     }
 }

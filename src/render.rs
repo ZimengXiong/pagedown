@@ -14,9 +14,9 @@ use lopdf::{
 };
 use printpdf::{
     Actions, BorderArray, BuiltinFont, Color, ColorArray, DictItem, HighlightingMode, Line,
-    LineCapStyle, LinePoint, LinkAnnotation, Mm, Op, PaintMode, PdfDocument, PdfFontHandle,
-    PdfPage, PdfSaveOptions, Point, Pt, RawImage, Rect, Rgb, Svg, TextItem, XObjectId,
-    XObjectTransform,
+    LineCapStyle, LinePoint, LinkAnnotation, Mm, Op, PaintMode, ParsedFont, PdfDocument,
+    PdfFontHandle, PdfPage, PdfSaveOptions, Point, Pt, RawImage, Rect, Rgb, Svg, TextItem,
+    XObjectId, XObjectTransform,
 };
 use serde::Deserialize;
 use syntect::{
@@ -134,7 +134,7 @@ pub struct ParagraphOptions {
 
 impl Default for ParagraphOptions {
     fn default() -> Self {
-        Self { after_pt: 11.5 }
+        Self { after_pt: 5.0 }
     }
 }
 
@@ -145,6 +145,7 @@ pub struct HeadingOptions {
     pub level2: HeadingLevelOptions,
     pub level3: HeadingLevelOptions,
     pub other: HeadingLevelOptions,
+    pub section_trailing_space_pt: f32,
     pub keep_with_next_level1_to_3_pt: f32,
     pub keep_with_next_other_pt: f32,
 }
@@ -153,33 +154,34 @@ impl Default for HeadingOptions {
     fn default() -> Self {
         Self {
             level1: HeadingLevelOptions {
-                size_pt: 29.4,
-                line_height_pt: 36.0,
-                space_before_pt: 26.0,
+                size_pt: 24.0,
+                line_height_pt: 30.0,
+                space_before_pt: 14.0,
                 first_space_before_pt: 0.0,
-                space_after_pt: 14.0,
+                space_after_pt: 3.0,
             },
             level2: HeadingLevelOptions {
-                size_pt: 18.35,
-                line_height_pt: 24.0,
-                space_before_pt: 24.0,
+                size_pt: 16.0,
+                line_height_pt: 21.0,
+                space_before_pt: 9.0,
                 first_space_before_pt: 0.0,
-                space_after_pt: 9.5,
+                space_after_pt: 2.0,
             },
             level3: HeadingLevelOptions {
-                size_pt: 14.2,
-                line_height_pt: 20.0,
-                space_before_pt: 18.0,
-                first_space_before_pt: 18.0,
-                space_after_pt: 7.5,
+                size_pt: 13.0,
+                line_height_pt: 18.0,
+                space_before_pt: 7.0,
+                first_space_before_pt: 7.0,
+                space_after_pt: 1.5,
             },
             other: HeadingLevelOptions {
-                size_pt: 12.4,
-                line_height_pt: 18.0,
-                space_before_pt: 15.0,
-                first_space_before_pt: 15.0,
-                space_after_pt: 6.5,
+                size_pt: 11.5,
+                line_height_pt: 16.0,
+                space_before_pt: 6.0,
+                first_space_before_pt: 6.0,
+                space_after_pt: 1.0,
             },
+            section_trailing_space_pt: 3.0,
             keep_with_next_level1_to_3_pt: 126.0,
             keep_with_next_other_pt: 70.0,
         }
@@ -201,9 +203,9 @@ impl Default for HeadingLevelOptions {
         Self {
             size_pt: 12.4,
             line_height_pt: 18.0,
-            space_before_pt: 15.0,
-            first_space_before_pt: 15.0,
-            space_after_pt: 6.5,
+            space_before_pt: 6.0,
+            first_space_before_pt: 6.0,
+            space_after_pt: 1.0,
         }
     }
 }
@@ -227,14 +229,14 @@ impl Default for CodeBlockOptions {
     fn default() -> Self {
         Self {
             pad_x_pt: 14.0,
-            pad_y_pt: 13.0,
-            title_height_pt: 14.0,
-            title_y_offset_pt: -1.5,
+            pad_y_pt: 8.0,
+            title_height_pt: 11.0,
+            title_y_offset_pt: -1.0,
             title_size_pt: 7.7,
-            after_pt: 16.0,
+            after_pt: 6.0,
             rule_x_offset_pt: 4.0,
-            rule_y_inset_pt: 10.0,
-            rule_total_y_inset_pt: 20.0,
+            rule_y_inset_pt: 6.0,
+            rule_total_y_inset_pt: 12.0,
             rule_thickness_pt: 2.2,
         }
     }
@@ -258,10 +260,10 @@ impl Default for MathBlockOptions {
             size_multiplier: 1.18,
             x_inset_pt: 12.0,
             content_width_inset_pt: 24.0,
-            vertical_padding_pt: 24.0,
-            draw_y_inset_pt: 12.0,
+            vertical_padding_pt: 14.0,
+            draw_y_inset_pt: 7.0,
             min_math_height_pt: 28.0,
-            after_pt: 15.0,
+            after_pt: 6.0,
         }
     }
 }
@@ -279,9 +281,9 @@ pub struct DividerOptions {
 impl Default for DividerOptions {
     fn default() -> Self {
         Self {
-            keep_height_pt: 32.0,
-            space_before_pt: 13.0,
-            space_after_pt: 18.0,
+            keep_height_pt: 22.0,
+            space_before_pt: 6.0,
+            space_after_pt: 6.0,
             x_inset_pt: 0.0,
             thickness_pt: 0.9,
         }
@@ -306,15 +308,15 @@ pub struct QuoteOptions {
 impl Default for QuoteOptions {
     fn default() -> Self {
         Self {
-            pad_x_pt: 16.0,
-            pad_y_pt: 12.0,
-            title_height_pt: 13.0,
-            title_y_offset_pt: -1.0,
+            pad_x_pt: 12.0,
+            pad_y_pt: 8.0,
+            title_height_pt: 10.0,
+            title_y_offset_pt: -0.5,
             title_size_pt: 8.4,
-            after_pt: 14.0,
+            after_pt: 5.0,
             rule_x_offset_pt: 4.0,
-            rule_y_inset_pt: 9.0,
-            rule_total_y_inset_pt: 18.0,
+            rule_y_inset_pt: 6.0,
+            rule_total_y_inset_pt: 12.0,
             rule_thickness_pt: 2.2,
         }
     }
@@ -326,6 +328,7 @@ pub struct ListOptions {
     pub item_gap_pt: f32,
     pub after_pt: f32,
     pub ensure_extra_pt: f32,
+    pub marker_indent_pt: f32,
     pub marker_text_gap_pt: f32,
     pub checkbox_x_pt: f32,
     pub checkbox_y_pt: f32,
@@ -345,10 +348,11 @@ pub struct ListOptions {
 impl Default for ListOptions {
     fn default() -> Self {
         Self {
-            item_gap_pt: 4.5,
-            after_pt: 6.0,
+            item_gap_pt: 2.5,
+            after_pt: 3.0,
             ensure_extra_pt: 8.0,
-            marker_text_gap_pt: 8.0,
+            marker_indent_pt: 18.0,
+            marker_text_gap_pt: 6.0,
             checkbox_x_pt: 1.5,
             checkbox_y_pt: 3.7,
             checkbox_size_pt: 7.6,
@@ -405,9 +409,9 @@ impl Default for TableOptions {
     fn default() -> Self {
         Self {
             cell_pad_x_pt: 7.0,
-            cell_pad_y_pt: 7.0,
+            cell_pad_y_pt: 5.0,
             border_thickness_pt: 0.45,
-            after_pt: 16.0,
+            after_pt: 6.0,
             initial_keep_height_pt: 20.0,
             row_ensure_extra_pt: 2.0,
         }
@@ -433,10 +437,10 @@ impl Default for ImageOptions {
         Self {
             px_to_pt: 0.75,
             border_outset_pt: 1.0,
-            caption_line_height_multiplier: 1.52,
-            block_after_pt: 12.0,
+            caption_line_height_multiplier: 1.35,
+            block_after_pt: 6.0,
             placeholder_height_pt: 96.0,
-            placeholder_after_pt: 14.0,
+            placeholder_after_pt: 6.0,
             placeholder_label_x_pt: 18.0,
             placeholder_label_y_pt: 40.0,
             placeholder_label_size_pt: 10.0,
@@ -634,12 +638,15 @@ struct Renderer<'a> {
     next_footnote_number: usize,
     syntax_set: SyntaxSet,
     theme_set: ThemeSet,
+    font_handles: HashMap<FontFace, PdfFontHandle>,
 }
 
 impl<'a> Renderer<'a> {
     fn new(base_dir: &'a Path, options: RenderOptions) -> Self {
+        let mut doc = PdfDocument::new(&options.title);
+        let font_handles = load_font_handles(&mut doc);
         Self {
-            doc: PdfDocument::new(&options.title),
+            doc,
             pages: Vec::new(),
             ops: Vec::new(),
             cursor_y: options.margin_top_pt,
@@ -652,6 +659,7 @@ impl<'a> Renderer<'a> {
             next_footnote_number: 1,
             syntax_set: SyntaxSet::load_defaults_newlines(),
             theme_set: ThemeSet::load_defaults(),
+            font_handles,
         }
     }
 
@@ -663,7 +671,15 @@ impl<'a> Renderer<'a> {
                 .get(idx + 1)
                 .map(|block| self.estimated_keep_height(block))
                 .unwrap_or(0.0);
-            self.render_block(block, idx == 0, next_keep)?;
+            let follows_heading = idx > 0
+                && matches!(
+                    doc.blocks.get(idx - 1),
+                    Some(Block::Heading { .. } | Block::Title(_) | Block::Subtitle(_))
+                );
+            self.render_block(block, idx == 0, follows_heading, next_keep)?;
+            if doc.blocks.get(idx + 1).is_some_and(is_heading_like) && !is_heading_like(block) {
+                self.add_space(self.options.headings.section_trailing_space_pt);
+            }
         }
         Ok(())
     }
@@ -693,15 +709,31 @@ impl<'a> Renderer<'a> {
             Block::Paragraph(_) => cfg.paragraph_keep_height_pt,
             Block::Divider => cfg.divider_keep_height_pt,
             Block::Heading { .. } => cfg.heading_keep_height_pt,
+            Block::Title(_) => cfg.heading_keep_height_pt,
+            Block::Subtitle(_) => cfg.paragraph_keep_height_pt,
             Block::Footnote { .. } => cfg.footnote_keep_height_pt,
         }
     }
 
     fn index_footnotes(&mut self, doc: &Document) {
         for block in &doc.blocks {
-            if let Block::Footnote { label, .. } = block {
+            self.index_footnotes_in_block(block);
+        }
+    }
+
+    fn index_footnotes_in_block(&mut self, block: &Block) {
+        match block {
+            Block::Footnote { label, .. } => {
                 self.footnote_number(label);
             }
+            Block::List { items, .. } => {
+                for item in items {
+                    for child in &item.children {
+                        self.index_footnotes_in_block(child);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -728,9 +760,19 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    fn render_block(&mut self, block: &Block, first: bool, next_keep: f32) -> Result<()> {
+    fn render_block(
+        &mut self,
+        block: &Block,
+        first: bool,
+        follows_heading: bool,
+        next_keep: f32,
+    ) -> Result<()> {
         match block {
-            Block::Heading { level, content } => self.heading(*level, content, first, next_keep),
+            Block::Title(content) => self.title_block(content),
+            Block::Subtitle(content) => self.subtitle_block(content),
+            Block::Heading { level, content } => {
+                self.heading(*level, content, first, follows_heading, next_keep)
+            }
             Block::Paragraph(content) => self.paragraph(content),
             Block::CodeBlock { lang, text } => self.code_block(lang.as_deref(), text),
             Block::MathBlock(tex) => self.math_block(tex),
@@ -752,18 +794,22 @@ impl<'a> Renderer<'a> {
         level: u8,
         content: &[Inline],
         first: bool,
+        follows_heading: bool,
         next_keep: f32,
     ) -> Result<()> {
-        let (size, line, before, after) = match level {
+        let (size, line, mut before, after) = match level {
             1 => heading_metrics(self.options.headings.level1, first),
             2 => heading_metrics(self.options.headings.level2, first),
             3 => heading_metrics(self.options.headings.level3, first),
             _ => heading_metrics(self.options.headings.other, first),
         };
+        if follows_heading {
+            before = 0.0;
+        }
         self.add_space(before);
 
         let style = Style {
-            font: FontFace::SansBold,
+            font: FontFace::Sans,
             size,
             color: if level == 1 {
                 (0.07, 0.11, 0.16)
@@ -787,6 +833,52 @@ impl<'a> Renderer<'a> {
         self.ensure_height(height + after + keep_with_next);
 
         self.draw_lines(&lines, self.options.margin_x_pt, self.cursor_y, line);
+        self.cursor_y += height;
+        self.add_space(after);
+        Ok(())
+    }
+
+    fn title_block(&mut self, content: &[Inline]) -> Result<()> {
+        let style = Style {
+            font: FontFace::Sans,
+            size: 31.0,
+            color: (0.0, 0.0, 0.0),
+            bg: None,
+            atomic: false,
+            underline: false,
+            strike: false,
+            shift_y: 0.0,
+            pad_x: 0.0,
+        };
+        let line_h = 37.0;
+        let after = 4.0;
+        let lines = self.wrap_inlines(content, style, self.content_width())?;
+        let height = lines.len().max(1) as f32 * line_h;
+        self.ensure_height(height + after + self.options.headings.keep_with_next_level1_to_3_pt);
+        self.draw_lines(&lines, self.options.margin_x_pt, self.cursor_y, line_h);
+        self.cursor_y += height;
+        self.add_space(after);
+        Ok(())
+    }
+
+    fn subtitle_block(&mut self, content: &[Inline]) -> Result<()> {
+        let style = Style {
+            font: FontFace::Sans,
+            size: 15.0,
+            color: (0.40, 0.40, 0.40),
+            bg: None,
+            atomic: false,
+            underline: false,
+            strike: false,
+            shift_y: 0.0,
+            pad_x: 0.0,
+        };
+        let line_h = 19.0;
+        let after = 12.0;
+        let lines = self.wrap_inlines(content, style, self.content_width())?;
+        let height = lines.len().max(1) as f32 * line_h;
+        self.ensure_height(height + after);
+        self.draw_lines(&lines, self.options.margin_x_pt, self.cursor_y, line_h);
         self.cursor_y += height;
         self.add_space(after);
         Ok(())
@@ -1026,6 +1118,8 @@ impl<'a> Renderer<'a> {
             self.options.body_size_pt,
             &self.options.list,
         );
+        let marker_indent = self.options.list.marker_indent_pt;
+        let list_w = marker_indent + marker_w;
         let item_gap = self.options.list.item_gap_pt;
         let line_h = self.options.body_line_height_pt;
         let style = self.body_style();
@@ -1035,7 +1129,7 @@ impl<'a> Renderer<'a> {
             if item.gap_before {
                 self.cursor_y += self.options.list.after_pt;
             }
-            let lines = self.wrap_inlines(&item.content, style, self.content_width() - marker_w)?;
+            let lines = self.wrap_inlines(&item.content, style, self.content_width() - list_w)?;
             let item_h = lines.len().max(1) as f32 * line_h;
             self.ensure_height(item_h + item_gap + self.options.list.ensure_extra_pt);
             let y = self.cursor_y;
@@ -1044,11 +1138,20 @@ impl<'a> Renderer<'a> {
                 start + idx as u64,
                 item.checked,
                 marker_w,
-                self.options.margin_x_pt,
+                self.options.margin_x_pt + marker_indent,
                 y,
             );
-            self.draw_lines(&lines, self.options.margin_x_pt + marker_w, y, line_h);
-            self.cursor_y += item_h + item_gap;
+            self.draw_lines(&lines, self.options.margin_x_pt + list_w, y, line_h);
+            self.cursor_y += item_h;
+            if !item.children.is_empty() {
+                let previous_margin = self.options.margin_x_pt;
+                self.options.margin_x_pt += list_w;
+                for child in &item.children {
+                    self.render_block(child, false, false, 0.0)?;
+                }
+                self.options.margin_x_pt = previous_margin;
+            }
+            self.cursor_y += item_gap;
         }
         self.cursor_y += self.options.list.after_pt;
         Ok(())
@@ -1350,8 +1453,8 @@ impl<'a> Renderer<'a> {
         if !self.options.page_numbers {
             return;
         }
-        let text = format!("Page {}", self.page_number);
-        let size = self.options.footer.size_pt;
+        let text = self.page_number.to_string();
+        let size = self.options.body_size_pt;
         let x = self.options.page_width_pt
             - self.options.margin_x_pt
             - measure(&text, FontFace::Sans, size);
@@ -1454,7 +1557,7 @@ impl<'a> Renderer<'a> {
                 },
             },
             Op::SetFont {
-                font: PdfFontHandle::Builtin(font.to_builtin()),
+                font: self.font_handle(font),
                 size: Pt(size),
             },
             Op::SetLineHeight {
@@ -1462,7 +1565,7 @@ impl<'a> Renderer<'a> {
             },
             Op::SetFillColor { col: rgb(color) },
             Op::ShowText {
-                items: vec![TextItem::Text(pdf_safe_text(text))],
+                items: vec![TextItem::Text(pdf_safe_text(font, text))],
             },
             Op::EndTextSection,
         ]);
@@ -1489,7 +1592,7 @@ impl<'a> Renderer<'a> {
                 },
             },
             Op::SetFont {
-                font: PdfFontHandle::Builtin(font.to_builtin()),
+                font: self.font_handle(font),
                 size: Pt(size),
             },
             Op::SetLineHeight {
@@ -1497,10 +1600,17 @@ impl<'a> Renderer<'a> {
             },
             Op::SetFillColor { col: rgb(color) },
             Op::ShowText {
-                items: vec![TextItem::Text(pdf_safe_text(text))],
+                items: vec![TextItem::Text(pdf_safe_text(font, text))],
             },
             Op::EndTextSection,
         ]);
+    }
+
+    fn font_handle(&self, font: FontFace) -> PdfFontHandle {
+        self.font_handles
+            .get(&font)
+            .cloned()
+            .unwrap_or_else(|| PdfFontHandle::Builtin(font.to_builtin()))
     }
 
     fn link_annotation(&mut self, x: f32, y_top: f32, w: f32, h: f32, href: &str) {
@@ -1619,11 +1729,11 @@ impl<'a> Renderer<'a> {
         ordered: bool,
         number: u64,
         checked: Option<bool>,
-        marker_w: f32,
+        _marker_w: f32,
         x: f32,
         y: f32,
     ) {
-        let color = (0.32, 0.38, 0.46);
+        let marker_color = (0.32, 0.38, 0.46);
         let cfg = self.options.list.clone();
         if let Some(checked) = checked {
             let box_x = x + cfg.checkbox_x_pt;
@@ -1634,7 +1744,7 @@ impl<'a> Renderer<'a> {
                 cfg.checkbox_size_pt,
                 cfg.checkbox_size_pt,
                 cfg.checkbox_thickness_pt,
-                color,
+                marker_color,
             );
             if checked {
                 self.draw_line_segment(
@@ -1643,7 +1753,7 @@ impl<'a> Renderer<'a> {
                     box_x + cfg.check_mid_x_pt,
                     box_y + cfg.check_mid_y_pt,
                     cfg.check_thickness_pt,
-                    color,
+                    marker_color,
                 );
                 self.draw_line_segment(
                     box_x + cfg.check_mid_x_pt,
@@ -1651,33 +1761,26 @@ impl<'a> Renderer<'a> {
                     box_x + cfg.check_end_x_pt,
                     box_y + cfg.check_end_y_pt,
                     cfg.check_thickness_pt,
-                    color,
+                    marker_color,
                 );
             }
         } else if ordered {
             let marker = format!("{number}.");
-            let size = self.options.body_size_pt * cfg.ordered_size_multiplier;
-            let width = measure(&marker, FontFace::SansBold, size);
+            let size = self.options.body_size_pt;
+            let color = (0.12, 0.14, 0.17);
             let baseline_y = text_baseline_y(
                 y,
                 self.options.body_line_height_pt,
                 FontFace::Serif,
                 self.options.body_size_pt,
             );
-            self.text_at_baseline(
-                x + marker_w - cfg.marker_text_gap_pt - width,
-                baseline_y,
-                FontFace::SansBold,
-                size,
-                color,
-                &marker,
-            );
+            self.text_at_baseline(x, baseline_y, FontFace::Serif, size, color, &marker);
         } else {
             self.draw_round_dot(
                 x + cfg.checkbox_x_pt + cfg.checkbox_size_pt / 2.0,
                 y + cfg.checkbox_y_pt + cfg.checkbox_size_pt / 2.0,
                 cfg.bullet_diameter_pt,
-                color,
+                marker_color,
             );
         }
     }
@@ -1978,14 +2081,58 @@ impl<'a> Renderer<'a> {
 impl FontFace {
     fn to_builtin(self) -> BuiltinFont {
         match self {
-            FontFace::Serif => BuiltinFont::TimesRoman,
-            FontFace::SerifBold => BuiltinFont::TimesBold,
-            FontFace::SerifItalic => BuiltinFont::TimesItalic,
-            FontFace::Sans => BuiltinFont::Helvetica,
-            FontFace::SansBold => BuiltinFont::HelveticaBold,
-            FontFace::SansItalic => BuiltinFont::HelveticaOblique,
+            FontFace::Serif | FontFace::Sans => BuiltinFont::Helvetica,
+            FontFace::SerifBold | FontFace::SansBold => BuiltinFont::HelveticaBold,
+            FontFace::SerifItalic | FontFace::SansItalic => BuiltinFont::HelveticaOblique,
             FontFace::Mono => BuiltinFont::Courier,
             FontFace::MonoBold => BuiltinFont::CourierBold,
+        }
+    }
+
+    fn is_code(self) -> bool {
+        matches!(self, FontFace::Mono | FontFace::MonoBold)
+    }
+}
+
+fn load_font_handles(doc: &mut PdfDocument) -> HashMap<FontFace, PdfFontHandle> {
+    let regular = load_external_font(doc, ARIAL_REGULAR_PATH);
+    let bold = load_external_font(doc, ARIAL_BOLD_PATH);
+    let italic = load_external_font(doc, ARIAL_ITALIC_PATH);
+
+    let mut handles = HashMap::new();
+    if let Some(handle) = regular {
+        handles.insert(FontFace::Serif, handle.clone());
+        handles.insert(FontFace::Sans, handle);
+    }
+    if let Some(handle) = bold {
+        handles.insert(FontFace::SerifBold, handle.clone());
+        handles.insert(FontFace::SansBold, handle);
+    }
+    if let Some(handle) = italic {
+        handles.insert(FontFace::SerifItalic, handle.clone());
+        handles.insert(FontFace::SansItalic, handle);
+    }
+    handles
+}
+
+fn load_external_font(doc: &mut PdfDocument, path: &str) -> Option<PdfFontHandle> {
+    let bytes = fs::read(path).ok()?;
+    let mut warnings = Vec::new();
+    let font = ParsedFont::from_bytes(&bytes, 0, &mut warnings)?;
+    Some(PdfFontHandle::External(doc.add_font(&font)))
+}
+
+const ARIAL_REGULAR_PATH: &str = "/System/Library/Fonts/Supplemental/Arial.ttf";
+const ARIAL_BOLD_PATH: &str = "/System/Library/Fonts/Supplemental/Arial Bold.ttf";
+const ARIAL_ITALIC_PATH: &str = "/System/Library/Fonts/Supplemental/Arial Italic.ttf";
+
+impl FontFace {
+    fn metrics_face(self) -> FontFace {
+        match self {
+            FontFace::Serif => FontFace::Sans,
+            FontFace::SerifBold => FontFace::SansBold,
+            FontFace::SerifItalic => FontFace::SansItalic,
+            other => other,
         }
     }
 }
@@ -2009,6 +2156,13 @@ fn heading_metrics(level: HeadingLevelOptions, first: bool) -> (f32, f32, f32, f
             level.space_before_pt
         },
         level.space_after_pt,
+    )
+}
+
+fn is_heading_like(block: &Block) -> bool {
+    matches!(
+        block,
+        Block::Heading { .. } | Block::Title(_) | Block::Subtitle(_)
     )
 }
 
@@ -2261,7 +2415,7 @@ impl MetricFont {
 
 fn metric_font(font: FontFace) -> &'static MetricFont {
     metric_fonts()
-        .get(&font)
+        .get(&font.metrics_face())
         .expect("all renderer fonts have metrics")
 }
 
@@ -2355,11 +2509,7 @@ fn list_marker_column_width(
     if ordered {
         let last = start + items.len().saturating_sub(1) as u64;
         let marker = format!("{last}.");
-        measure(
-            &marker,
-            FontFace::SansBold,
-            body_size * list.ordered_size_multiplier,
-        ) + list.marker_text_gap_pt
+        measure(&marker, FontFace::Serif, body_size) + list.marker_text_gap_pt
     } else {
         list.checkbox_x_pt + list.checkbox_size_pt + list.marker_text_gap_pt
     }
@@ -2486,8 +2636,23 @@ fn rgb((r, g, b): (f32, f32, f32)) -> Color {
     })
 }
 
-fn pdf_safe_text(text: &str) -> String {
-    text.replace('\t', "    ")
+fn pdf_safe_text(font: FontFace, text: &str) -> String {
+    if !font.is_code() {
+        return text.replace('\t', "    ");
+    }
+
+    let mut safe = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\t' => safe.push_str("    "),
+            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' => safe.push('\''),
+            '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => safe.push('"'),
+            '\u{2013}' | '\u{2014}' => safe.push('-'),
+            '\u{2026}' => safe.push_str("..."),
+            _ => safe.push(ch),
+        }
+    }
+    safe
 }
 
 fn pt_to_mm(pt: f32) -> Mm {
@@ -2867,11 +3032,13 @@ mod tests {
                     checked: None,
                     gap_before: false,
                     content: vec![Inline::Text("Bullet item".to_string())],
+                    children: Vec::new(),
                 },
                 ListItem {
                     checked: Some(true),
                     gap_before: true,
                     content: vec![Inline::Text("Task item".to_string())],
+                    children: Vec::new(),
                 },
             ],
         }]);

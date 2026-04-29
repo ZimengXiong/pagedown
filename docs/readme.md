@@ -1,6 +1,5 @@
-# Pagedown
-
-A CLI-only Markdown-to-PDF renderer in Rust. Pagedown parses Markdown into a small document model, lays it out directly, and paints PDF primitives. It does not render HTML and print a browser page.
+@title{pagedown}
+@sub{A md2PDF renderer that paints primitives and does NOT print HTML}
 
 ## Quickstart
 
@@ -26,15 +25,5 @@ pagedown input.md --config examples/render-config.toml
 pagedown input.md --page-size a4 --no-page-numbers
 ```
 
-## Math
-
-```sh
-pagedown input.md --math-mode lualatex
-pagedown input.md --math-mode fallback
-```
-
-Main uses `lualatex` by default. Install a TeX distribution with `lualatex`, `latex`, and `dvisvgm` for full math support. Use `fallback` when TeX is unavailable.
-
-## Status
-
-`main` is intentionally CLI-only. The browser/WASM app is not supported here. This README page is rendered by Pagedown.
+> [!NOTE]
+> Docs are an WIP, see [examples/](examples/) for configuration details

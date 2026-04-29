@@ -5,6 +5,8 @@ pub struct Document {
 
 #[derive(Debug, Clone)]
 pub enum Block {
+    Title(Vec<Inline>),
+    Subtitle(Vec<Inline>),
     Heading {
         level: u8,
         content: Vec<Inline>,
@@ -61,6 +63,7 @@ pub struct ListItem {
     pub checked: Option<bool>,
     pub gap_before: bool,
     pub content: Vec<Inline>,
+    pub children: Vec<Block>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -9,30 +9,30 @@ page_numbers = false
 title = "Pagedown"
 
 [paragraph]
-after_pt = 7.0
+after_pt = 4.0
 
 [headings.level1]
 size_pt = 26.0
 line_height_pt = 30.0
 space_before_pt = 0.0
 first_space_before_pt = 0.0
-space_after_pt = 8.0
+space_after_pt = 2.0
 
 [headings.level2]
 size_pt = 15.0
 line_height_pt = 18.0
-space_before_pt = 13.0
-first_space_before_pt = 13.0
-space_after_pt = 5.0
+space_before_pt = 6.0
+first_space_before_pt = 6.0
+space_after_pt = 1.0
 
 [code_block]
 pad_x_pt = 10.0
-pad_y_pt = 8.0
-title_height_pt = 11.0
-title_y_offset_pt = -1.0
+pad_y_pt = 5.0
+title_height_pt = 9.0
+title_y_offset_pt = -0.5
 title_size_pt = 6.7
-after_pt = 8.0
+after_pt = 4.0
 rule_x_offset_pt = 3.0
-rule_y_inset_pt = 7.0
-rule_total_y_inset_pt = 14.0
+rule_y_inset_pt = 4.0
+rule_total_y_inset_pt = 8.0
 rule_thickness_pt = 1.8
