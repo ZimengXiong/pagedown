@@ -13,9 +13,11 @@ Inline code should sit inside the line without throwing off the baseline. Links 
 > [!NOTE]
 > Callouts use GitHub-style note syntax and render as native PDF blocks, not HTML boxes. They can include **strong text**, *emphasis*, inline code like `RenderOptions`, and citations like [@knuth1984].
 
+- Plain bullet markers use native shapes and align with the list text.
+- Citation markers such as [@lamport1994] are styled inline until bibliography resolution exists.
+
 - [x] Task list markers keep their checked state.
 - [ ] Plain list layout shares the same body rhythm as paragraphs.
-- Citation markers such as [@lamport1994] are styled inline until bibliography resolution exists.
 
 1. Ordered list markers use native numbering instead of browser text layout.
 2. Continuation lines stay aligned with the ordered list body text.

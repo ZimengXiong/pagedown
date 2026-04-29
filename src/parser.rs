@@ -758,6 +758,48 @@ Footnote ref[^why].
     }
 
     #[test]
+    fn parses_unordered_bullet_lists() {
+        let doc = parse_markdown(
+            r#"- First bullet
+- Second bullet with [@doe2024]
+"#,
+        );
+        let Block::List { ordered, items, .. } = &doc.blocks[0] else {
+            panic!("expected unordered list");
+        };
+
+        assert!(!ordered);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].checked, None);
+        assert!(
+            items[1]
+                .content
+                .iter()
+                .any(|inline| matches!(inline, Inline::Citation(key) if key == "doe2024"))
+        );
+    }
+
+    #[test]
+    fn parses_unordered_list_after_block_quote() {
+        let doc = parse_markdown(
+            r#"> Quote
+
+- First bullet
+- Second bullet
+"#,
+        );
+
+        assert!(matches!(doc.blocks[0], Block::Quote { .. }));
+        let Block::List { ordered, items, .. } = &doc.blocks[1] else {
+            panic!("expected unordered list after quote");
+        };
+
+        assert!(!ordered);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].checked, None);
+    }
+
+    #[test]
     fn parses_ordered_list_start_numbers() {
         let doc = parse_markdown(
             r#"3. Third item

@@ -802,13 +802,18 @@ impl<'a> Renderer<'a> {
         if !self.options.page_numbers {
             return;
         }
+        let text = format!("Page {}", self.page_number);
+        let size = 8.0;
+        let x = self.options.page_width_pt
+            - self.options.margin_x_pt
+            - measure(&text, FontFace::Sans, size);
         self.text(
-            self.options.page_width_pt - self.options.margin_x_pt - 42.0,
+            x,
             self.options.page_height_pt - 34.0,
             FontFace::Sans,
-            8.0,
+            size,
             (0.54, 0.58, 0.64),
-            &format!("Page {}", self.page_number),
+            &text,
         );
     }
 
@@ -989,14 +994,33 @@ impl<'a> Renderer<'a> {
         thickness: f32,
         color: (f32, f32, f32),
     ) {
+        self.draw_line_segment_with_cap(
+            x1,
+            y1_top,
+            x2,
+            y2_top,
+            thickness,
+            color,
+            LineCapStyle::Butt,
+        );
+    }
+
+    fn draw_line_segment_with_cap(
+        &mut self,
+        x1: f32,
+        y1_top: f32,
+        x2: f32,
+        y2_top: f32,
+        thickness: f32,
+        color: (f32, f32, f32),
+        cap: LineCapStyle,
+    ) {
         let y1 = self.options.page_height_pt - y1_top;
         let y2 = self.options.page_height_pt - y2_top;
         self.ops.extend_from_slice(&[
             Op::SetOutlineColor { col: rgb(color) },
             Op::SetOutlineThickness { pt: Pt(thickness) },
-            Op::SetLineCapStyle {
-                cap: LineCapStyle::Butt,
-            },
+            Op::SetLineCapStyle { cap },
             Op::DrawLine {
                 line: Line {
                     points: vec![
@@ -1087,8 +1111,31 @@ impl<'a> Renderer<'a> {
                 &marker,
             );
         } else {
-            self.rect(x + 5.0, y + 6.2, 3.6, 3.6, color);
+            let baseline_y = text_baseline_y(
+                y,
+                self.options.body_line_height_pt,
+                FontFace::Serif,
+                self.options.body_size_pt,
+            );
+            self.draw_round_dot(
+                x + 7.0,
+                baseline_y - self.options.body_size_pt * 0.34,
+                2.6,
+                color,
+            );
         }
+    }
+
+    fn draw_round_dot(&mut self, x: f32, y_top: f32, diameter: f32, color: (f32, f32, f32)) {
+        self.draw_line_segment_with_cap(
+            x,
+            y_top,
+            x + 0.01,
+            y_top,
+            diameter,
+            color,
+            LineCapStyle::Round,
+        );
     }
 
     fn draw_vertical_rule(
