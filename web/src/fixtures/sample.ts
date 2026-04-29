@@ -239,8 +239,8 @@ decoration_thickness_pt = 0.45
 inline_bg_height_extra_pt = 3.4
 inline_bg_line_height_inset_pt = 2.0
 inline_bg_y_offset_pt = -1.2
-serif_decoration_width_multiplier = 0.92
-sans_decoration_width_multiplier = 0.96
+serif_decoration_width_multiplier = 1.0
+sans_decoration_width_multiplier = 1.0
 mono_decoration_width_multiplier = 1.0
 
 [footer]
