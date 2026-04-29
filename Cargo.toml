@@ -1,5 +1,5 @@
 [package]
-name = "native_markdown_pdf"
+name = "pagedown"
 version = "0.1.0"
 edition = "2024"
 
