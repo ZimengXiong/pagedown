@@ -1111,18 +1111,7 @@ impl<'a> Renderer<'a> {
                 &marker,
             );
         } else {
-            let baseline_y = text_baseline_y(
-                y,
-                self.options.body_line_height_pt,
-                FontFace::Serif,
-                self.options.body_size_pt,
-            );
-            self.draw_round_dot(
-                x + 7.0,
-                baseline_y - self.options.body_size_pt * 0.34,
-                2.6,
-                color,
-            );
+            self.draw_round_dot(x + 5.3, y + 7.5, 3.6, color);
         }
     }
 
