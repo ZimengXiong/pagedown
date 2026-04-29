@@ -660,22 +660,27 @@ impl<'a> Renderer<'a> {
         let mut line_y = y;
         for line in lines {
             let mut frag_x = x;
+            let max_text_size = line
+                .fragments
+                .iter()
+                .filter_map(|frag| match frag.kind {
+                    FragmentKind::Text(_) => Some(frag.style.size),
+                    FragmentKind::Math(_) => None,
+                })
+                .fold(0.0, f32::max);
             for frag in &line.fragments {
                 if let Some(bg) = frag.style.bg {
-                    self.rect(
-                        frag_x,
-                        line_y + 1.9,
-                        frag.width + frag.style.pad_x * 2.0,
-                        line_height - 4.0,
-                        bg,
-                    );
+                    let bg_h = (frag.style.size + 3.4).min(line_height - 2.0);
+                    let bg_y = line_y + (line_height - bg_h) / 2.0;
+                    self.rect(frag_x, bg_y, frag.width + frag.style.pad_x * 2.0, bg_h, bg);
                 }
                 let text_x = frag_x + frag.style.pad_x;
                 match &frag.kind {
                     FragmentKind::Text(text) => {
+                        let text_y = line_y + (max_text_size - frag.style.size).max(0.0);
                         self.text(
                             text_x,
-                            line_y,
+                            text_y,
                             frag.style.font,
                             frag.style.size,
                             frag.style.color,
@@ -684,7 +689,7 @@ impl<'a> Renderer<'a> {
                         if frag.style.underline {
                             self.draw_rule_at(
                                 text_x,
-                                line_y + frag.style.size + 1.7,
+                                text_y + frag.style.size + 1.7,
                                 decoration_width(frag),
                                 0.45,
                                 frag.style.color,
@@ -841,11 +846,11 @@ impl<'a> Renderer<'a> {
                     code.clone(),
                     Style {
                         font: FontFace::Mono,
-                        size: base.size * 0.88,
+                        size: base.size * 0.94,
                         color: (0.05, 0.11, 0.18),
                         bg: Some((0.935, 0.945, 0.958)),
                         underline: false,
-                        pad_x: 2.3,
+                        pad_x: 0.95,
                     },
                 )),
                 Inline::Math(tex) => {
