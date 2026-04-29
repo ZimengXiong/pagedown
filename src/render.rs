@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     path::Path,
     process::Command,
@@ -8,10 +8,15 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use lopdf::{
+    Dictionary as LoDictionary, Document as LoDocument, Object as LoObject, ObjectId as LoObjectId,
+    Stream as LoStream,
+};
 use printpdf::{
-    Actions, BorderArray, BuiltinFont, Color, ColorArray, HighlightingMode, Line, LineCapStyle,
-    LinePoint, LinkAnnotation, Mm, Op, PaintMode, PdfDocument, PdfFontHandle, PdfPage,
-    PdfSaveOptions, Point, Pt, RawImage, Rect, Rgb, Svg, TextItem, XObjectId, XObjectTransform,
+    Actions, BorderArray, BuiltinFont, Color, ColorArray, DictItem, HighlightingMode, Line,
+    LineCapStyle, LinePoint, LinkAnnotation, Mm, Op, PaintMode, PdfDocument, PdfFontHandle,
+    PdfPage, PdfSaveOptions, Point, Pt, RawImage, Rect, Rgb, Svg, TextItem, XObjectId,
+    XObjectTransform,
 };
 use serde::Deserialize;
 use syntect::{
@@ -590,6 +595,10 @@ struct RenderedMath {
     baseline: f32,
 }
 
+struct MathFormPdf {
+    bytes: Vec<u8>,
+}
+
 #[derive(Clone, Debug)]
 struct LayoutLine {
     fragments: Vec<Fragment>,
@@ -604,7 +613,7 @@ pub fn render_pdf_with_options(
 ) -> Result<()> {
     let mut renderer = Renderer::new(base_dir, options);
     renderer.render_document(doc)?;
-    let bytes = renderer.finish();
+    let bytes = renderer.finish()?;
     fs::write(output, bytes).with_context(|| format!("failed to write {}", output.display()))?;
     Ok(())
 }
@@ -618,6 +627,7 @@ struct Renderer<'a> {
     base_dir: &'a Path,
     options: RenderOptions,
     math_cache: HashMap<String, RenderedMath>,
+    math_forms: HashMap<String, MathFormPdf>,
     footnote_numbers: HashMap<String, usize>,
     next_footnote_number: usize,
     syntax_set: SyntaxSet,
@@ -635,6 +645,7 @@ impl<'a> Renderer<'a> {
             base_dir,
             options,
             math_cache: HashMap::new(),
+            math_forms: HashMap::new(),
             footnote_numbers: HashMap::new(),
             next_footnote_number: 1,
             syntax_set: SyntaxSet::load_defaults_newlines(),
@@ -702,11 +713,17 @@ impl<'a> Renderer<'a> {
         number
     }
 
-    fn finish(mut self) -> Vec<u8> {
+    fn finish(mut self) -> Result<Vec<u8>> {
         self.push_page();
-        self.doc
+        let bytes = self
+            .doc
             .with_pages(self.pages)
-            .save(&PdfSaveOptions::default(), &mut Vec::new())
+            .save(&PdfSaveOptions::default(), &mut Vec::new());
+        if self.math_forms.is_empty() {
+            Ok(bytes)
+        } else {
+            replace_math_xobjects(bytes, &self.math_forms)
+        }
     }
 
     fn render_block(&mut self, block: &Block, first: bool, next_keep: f32) -> Result<()> {
@@ -1877,6 +1894,45 @@ impl<'a> Renderer<'a> {
             return Ok(rendered.clone());
         }
 
+        let rendered = self
+            .render_math_pdf_form(tex, display)
+            .or_else(|_| self.render_math_svg(tex, display))?;
+        self.math_cache.insert(key, rendered.clone());
+        Ok(rendered)
+    }
+
+    fn render_math_pdf_form(&mut self, tex: &str, display: bool) -> Result<RenderedMath> {
+        let pdf = tex_to_pdf(tex, display)?;
+        let width = pdf.width.unwrap_or(80.0).max(1.0);
+        let height = pdf.height.unwrap_or(18.0).max(1.0);
+        let baseline = pdf.baseline.unwrap_or(height * 0.78);
+        let svg = pdf
+            .fallback_svg
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("TeX SVG fallback was not generated"))?;
+        let mut warnings = Vec::new();
+        let mut external = Svg::parse(svg, &mut warnings)
+            .map_err(|err| anyhow::anyhow!("failed to parse TeX SVG placeholder: {err}"))?;
+        let marker = XObjectId::new().0;
+        external.stream.dict.insert(
+            "NativeMdPdfMath".to_string(),
+            DictItem::String {
+                data: marker.as_bytes().to_vec(),
+                literal: true,
+            },
+        );
+        let id = self.doc.add_xobject(&external);
+        self.math_forms
+            .insert(marker, MathFormPdf { bytes: pdf.bytes });
+        Ok(RenderedMath {
+            id,
+            width,
+            height,
+            baseline: if display { height } else { baseline },
+        })
+    }
+
+    fn render_math_svg(&mut self, tex: &str, display: bool) -> Result<RenderedMath> {
         let svg = tex_to_svg(tex, display)?;
         let (width, height) = svg_size_pt(&svg).unwrap_or((80.0, 18.0));
         let baseline = svg_baseline_pt(&svg).unwrap_or(height * 0.78);
@@ -1884,22 +1940,27 @@ impl<'a> Renderer<'a> {
         let external = Svg::parse(&svg, &mut warnings)
             .map_err(|err| anyhow::anyhow!("failed to parse TeX SVG: {err}"))?;
         let id = self.doc.add_xobject(&external);
-        let rendered = RenderedMath {
+        Ok(RenderedMath {
             id,
             width,
             height,
             baseline: if display { height } else { baseline },
-        };
-        self.math_cache.insert(key, rendered.clone());
-        Ok(rendered)
+        })
     }
 
     fn draw_math(&mut self, math: &RenderedMath, x: f32, y_top: f32) {
+        let y = self.options.page_height_pt - y_top - math.height;
+        self.ops.push(Op::SetFillColor {
+            col: rgb((0.10, 0.12, 0.16)),
+        });
+        self.ops.push(Op::SetOutlineColor {
+            col: rgb((0.10, 0.12, 0.16)),
+        });
         self.ops.push(Op::UseXobject {
             id: math.id.clone(),
             transform: XObjectTransform {
                 translate_x: Some(Pt(x)),
-                translate_y: Some(Pt(self.options.page_height_pt - y_top - math.height)),
+                translate_y: Some(Pt(y)),
                 scale_x: Some(1.0),
                 scale_y: Some(1.0),
                 dpi: Some(300.0),
@@ -2428,26 +2489,272 @@ fn pt_to_mm(pt: f32) -> Mm {
     Mm(pt * 25.4 / 72.0)
 }
 
+struct TeXPdf {
+    bytes: Vec<u8>,
+    width: Option<f32>,
+    height: Option<f32>,
+    baseline: Option<f32>,
+    fallback_svg: Option<String>,
+}
+
+fn replace_math_xobjects(bytes: Vec<u8>, forms: &HashMap<String, MathFormPdf>) -> Result<Vec<u8>> {
+    let mut doc = LoDocument::load_mem(&bytes).context("failed to reopen rendered PDF")?;
+    let targets: Vec<_> = doc
+        .objects
+        .iter()
+        .filter_map(|(id, object)| math_xobject_marker(object).map(|marker| (*id, marker)))
+        .collect();
+
+    for (target_id, marker) in targets {
+        let Some(form) = forms.get(&marker) else {
+            continue;
+        };
+        let stream = imported_math_form_stream(&mut doc, &form.bytes)?;
+        doc.set_object(target_id, LoObject::Stream(stream));
+    }
+
+    let mut out = Vec::new();
+    doc.save_to(&mut out)
+        .context("failed to save PDF with selectable TeX forms")?;
+    Ok(out)
+}
+
+fn math_xobject_marker(object: &LoObject) -> Option<String> {
+    let stream = object.as_stream().ok()?;
+    let marker = stream.dict.get(b"NativeMdPdfMath").ok()?;
+    match marker {
+        LoObject::String(bytes, _) => String::from_utf8(bytes.clone()).ok(),
+        _ => None,
+    }
+}
+
+fn imported_math_form_stream(dst: &mut LoDocument, bytes: &[u8]) -> Result<LoStream> {
+    let src = LoDocument::load_mem(bytes).context("failed to load generated TeX PDF")?;
+    let pages = src.get_pages();
+    let page_id = *pages
+        .values()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("generated TeX PDF did not contain a page"))?;
+    let page = src
+        .get_dictionary(page_id)
+        .context("failed to read generated TeX PDF page dictionary")?;
+    let content = src
+        .get_page_content(page_id)
+        .context("failed to read generated TeX PDF page content")?;
+    let (resource_dict, resource_ids) = src
+        .get_page_resources(page_id)
+        .context("failed to read generated TeX PDF page resources")?;
+    let resources = if let Ok(resources) = page.get(b"Resources") {
+        import_lopdf_object(
+            &src,
+            dst,
+            resources,
+            &mut HashMap::new(),
+            &mut HashSet::new(),
+        )?
+    } else if let Some(resource_id) = resource_ids.first() {
+        import_lopdf_object(
+            &src,
+            dst,
+            &LoObject::Reference(*resource_id),
+            &mut HashMap::new(),
+            &mut HashSet::new(),
+        )?
+    } else if let Some(resources) = resource_dict {
+        import_lopdf_object(
+            &src,
+            dst,
+            &LoObject::Dictionary(resources.clone()),
+            &mut HashMap::new(),
+            &mut HashSet::new(),
+        )?
+    } else {
+        LoObject::Dictionary(LoDictionary::new())
+    };
+    let bbox = page_box(page).unwrap_or([0.0, 0.0, 80.0, 18.0]);
+    let width = (bbox[2] - bbox[0]).abs().max(1.0);
+    let height = (bbox[3] - bbox[1]).abs().max(1.0);
+
+    let mut dict = LoDictionary::new();
+    dict.set("Type", LoObject::Name(b"XObject".to_vec()));
+    dict.set("Subtype", LoObject::Name(b"Form".to_vec()));
+    dict.set("FormType", LoObject::Integer(1));
+    dict.set(
+        "BBox",
+        LoObject::Array(bbox.iter().copied().map(LoObject::Real).collect()),
+    );
+    dict.set(
+        "Matrix",
+        LoObject::Array(vec![
+            LoObject::Real(1.0 / width),
+            LoObject::Real(0.0),
+            LoObject::Real(0.0),
+            LoObject::Real(1.0 / height),
+            LoObject::Real(0.0),
+            LoObject::Real(0.0),
+        ]),
+    );
+    dict.set("Resources", resources);
+
+    Ok(LoStream::new(dict, content).with_compression(false))
+}
+
+fn import_lopdf_object(
+    src: &LoDocument,
+    dst: &mut LoDocument,
+    object: &LoObject,
+    imported: &mut HashMap<LoObjectId, LoObjectId>,
+    seen: &mut HashSet<LoObjectId>,
+) -> Result<LoObject> {
+    Ok(match object {
+        LoObject::Array(values) => LoObject::Array(
+            values
+                .iter()
+                .map(|value| import_lopdf_object(src, dst, value, imported, seen))
+                .collect::<Result<_>>()?,
+        ),
+        LoObject::Dictionary(dict) => {
+            let mut out = LoDictionary::new();
+            for (key, value) in dict.iter() {
+                out.set(
+                    key.clone(),
+                    import_lopdf_object(src, dst, value, imported, seen)?,
+                );
+            }
+            LoObject::Dictionary(out)
+        }
+        LoObject::Stream(stream) => {
+            let mut dict = LoDictionary::new();
+            for (key, value) in stream.dict.iter() {
+                dict.set(
+                    key.clone(),
+                    import_lopdf_object(src, dst, value, imported, seen)?,
+                );
+            }
+            LoObject::Stream(LoStream::new(dict, stream.content.clone()).with_compression(false))
+        }
+        LoObject::Reference(id) => {
+            if let Some(new_id) = imported.get(id) {
+                return Ok(LoObject::Reference(*new_id));
+            }
+            if !seen.insert(*id) {
+                return Ok(LoObject::Null);
+            }
+            let new_id = dst.new_object_id();
+            imported.insert(*id, new_id);
+            let resolved = src
+                .objects
+                .get(id)
+                .ok_or_else(|| anyhow::anyhow!("missing referenced TeX PDF object"))?;
+            let copied = import_lopdf_object(src, dst, resolved, imported, seen)?;
+            dst.set_object(new_id, copied);
+            seen.remove(id);
+            LoObject::Reference(new_id)
+        }
+        other => other.clone(),
+    })
+}
+
+fn page_box(page: &lopdf::Dictionary) -> Option<[f32; 4]> {
+    let values = page.get(b"MediaBox").ok()?.as_array().ok()?;
+    if values.len() != 4 {
+        return None;
+    }
+    Some([
+        lopdf_number(&values[0])?,
+        lopdf_number(&values[1])?,
+        lopdf_number(&values[2])?,
+        lopdf_number(&values[3])?,
+    ])
+}
+
+fn lopdf_number(object: &LoObject) -> Option<f32> {
+    match object {
+        LoObject::Integer(value) => Some(*value as f32),
+        LoObject::Real(value) => Some(*value),
+        _ => None,
+    }
+}
+
+fn tex_to_pdf(tex: &str, display: bool) -> Result<TeXPdf> {
+    let dir = math_temp_dir()?;
+    let tex_path = dir.join("math.tex");
+    fs::write(&tex_path, math_pdf_tex_document(tex, display))?;
+
+    let lualatex = Command::new("lualatex")
+        .current_dir(&dir)
+        .args(["-interaction=nonstopmode", "-halt-on-error", "math.tex"])
+        .output()
+        .context("failed to run lualatex for selectable math rendering")?;
+    if !lualatex.status.success() {
+        return Err(anyhow::anyhow!(
+            "lualatex failed: {}{}",
+            String::from_utf8_lossy(&lualatex.stdout),
+            String::from_utf8_lossy(&lualatex.stderr)
+        ));
+    }
+
+    let pdf_path = dir.join("math.pdf");
+    let bytes = fs::read(&pdf_path).context("failed to read generated math PDF")?;
+    fs::write(&tex_path, math_dvi_tex_document(tex, display))?;
+    let metrics = tex_svg_metrics(&dir).ok();
+    let fallback_svg = fs::read_to_string(dir.join("math.svg")).ok();
+
+    Ok(TeXPdf {
+        bytes,
+        width: metrics.as_ref().map(|m| m.0),
+        height: metrics.as_ref().map(|m| m.1),
+        baseline: metrics.as_ref().map(|m| m.2),
+        fallback_svg,
+    })
+}
+
 fn tex_to_svg(tex: &str, display: bool) -> Result<String> {
+    let dir = math_temp_dir()?;
+    let tex_path = dir.join("math.tex");
+    fs::write(&tex_path, math_dvi_tex_document(tex, display))?;
+    tex_svg_metrics(&dir)?;
+    fs::read_to_string(dir.join("math.svg")).context("failed to read generated math SVG")
+}
+
+fn math_temp_dir() -> Result<std::path::PathBuf> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
     let dir = std::env::temp_dir().join(format!("native-mdpdf-math-{nonce}"));
     fs::create_dir_all(&dir)?;
-    let tex_path = dir.join("math.tex");
+    Ok(dir)
+}
+
+fn math_pdf_tex_document(tex: &str, display: bool) -> String {
+    let body = if display {
+        format!("$\\displaystyle\n{tex}\n$")
+    } else {
+        format!("${tex}$")
+    };
+    format!(
+        "\\documentclass[preview,border=0pt]{{standalone}}\n\\usepackage{{amsmath,amssymb,mathtools,bm}}\n\\usepackage{{unicode-math}}\n\\setmathfont{{Latin Modern Math}}\n\\begin{{document}}\n{body}\n\\end{{document}}\n"
+    )
+}
+
+fn math_dvi_tex_document(tex: &str, display: bool) -> String {
+    let body = math_tex_body(tex, display);
+    format!(
+        "\\documentclass[preview,border=0pt]{{standalone}}\n\\usepackage[T1]{{fontenc}}\n\\usepackage{{amsmath,amssymb,mathtools,bm}}\n\\begin{{document}}\n{body}\n\\end{{document}}\n"
+    )
+}
+
+fn math_tex_body(tex: &str, display: bool) -> String {
     let body = if display {
         format!("\\[\\displaystyle\n{tex}\n\\]")
     } else {
         format!("${tex}$")
     };
-    fs::write(
-        &tex_path,
-        format!(
-            "\\documentclass[preview,border=0pt]{{standalone}}\n\\usepackage{{amsmath,amssymb,mathtools,bm}}\n\\begin{{document}}\n{body}\n\\end{{document}}\n"
-        ),
-    )?;
+    body
+}
 
+fn tex_svg_metrics(dir: &Path) -> Result<(f32, f32, f32)> {
     let latex = Command::new("latex")
         .current_dir(&dir)
         .args(["-interaction=nonstopmode", "-halt-on-error", "math.tex"])
@@ -2472,7 +2779,11 @@ fn tex_to_svg(tex: &str, display: bool) -> Result<String> {
         ));
     }
 
-    fs::read_to_string(dir.join("math.svg")).context("failed to read generated math SVG")
+    let svg =
+        fs::read_to_string(dir.join("math.svg")).context("failed to read generated math SVG")?;
+    let (width, height) = svg_size_pt(&svg).unwrap_or((80.0, 18.0));
+    let baseline = svg_baseline_pt(&svg).unwrap_or(height * 0.78);
+    Ok((width, height, baseline))
 }
 
 fn svg_size_pt(svg: &str) -> Option<(f32, f32)> {

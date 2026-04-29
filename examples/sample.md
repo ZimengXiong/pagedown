@@ -60,7 +60,7 @@ $$
 \int_0^1 x^2 dx = \frac{1}{3}
 $$
 
-Math is rendered through a real TeX toolchain and embedded back into the PDF as vector artwork. The parser keeps inline and display math as distinct nodes, so layout, pagination, tables, and image handling stay independent from the math backend.
+Math is rendered through a real TeX toolchain and imported back into the PDF as native form content, so it remains selectable instead of being flattened into browser output. The parser keeps inline and display math as distinct nodes, so layout, pagination, tables, and image handling stay independent from the math backend.
 
 ## Tables
 
