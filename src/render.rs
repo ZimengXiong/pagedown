@@ -436,9 +436,9 @@ impl<'a> Renderer<'a> {
         self.ensure_height(32.0);
         self.cursor_y += 13.0;
         self.draw_rule_at(
-            self.options.margin_x_pt + self.content_width() * 0.16,
+            self.options.margin_x_pt,
             self.cursor_y,
-            self.content_width() * 0.68,
+            self.content_width(),
             0.9,
             (0.78, 0.81, 0.86),
         );
