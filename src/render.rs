@@ -42,7 +42,6 @@ const CODE_LINE: f32 = 13.4;
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum MathMode {
-    Katex,
     Lualatex,
     #[serde(alias = "latex")]
     Latex,
@@ -103,7 +102,7 @@ impl Default for RenderOptions {
             code_line_height_pt: CODE_LINE,
             code_highlighting: true,
             code_theme: "InspiredGitHub".to_string(),
-            math_mode: MathMode::Katex,
+            math_mode: MathMode::Lualatex,
             page_numbers: true,
             max_image_height_pt: 286.0,
             image_captions: true,
@@ -1862,7 +1861,6 @@ impl<'a> Renderer<'a> {
 
     fn math(&mut self, tex: &str, display: bool, size: f32) -> Result<RenderedMath> {
         match self.options.math_mode {
-            MathMode::Katex => self.render_math_katex(tex, display, size),
             MathMode::Lualatex | MathMode::Latex => self.render_math_lualatex(tex, display),
             MathMode::Fallback => Ok(self.math_fallback(tex, size)),
         }
@@ -1893,13 +1891,6 @@ impl<'a> Renderer<'a> {
             height: 0.0,
             baseline: 0.0,
         }
-    }
-
-    fn render_math_katex(&mut self, tex: &str, display: bool, size: f32) -> Result<RenderedMath> {
-        // Native builds keep the high-fidelity path until the shared KaTeX WASM
-        // layout engine is wired in. Browser builds will replace this backend.
-        self.render_math_lualatex(tex, display)
-            .or_else(|_| Ok(self.math_fallback(tex, size)))
     }
 
     fn render_math_lualatex(&mut self, tex: &str, display: bool) -> Result<RenderedMath> {

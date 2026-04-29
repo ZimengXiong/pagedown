@@ -72,7 +72,7 @@ struct Args {
     #[arg(long)]
     no_code_highlighting: bool,
 
-    /// Math backend: katex, lualatex, latex, or fallback.
+    /// Math backend: lualatex, latex, or fallback.
     #[arg(long)]
     math_mode: Option<String>,
 
@@ -178,12 +178,11 @@ fn render_options(args: &Args) -> Result<render::RenderOptions> {
     }
     if let Some(math_mode) = &args.math_mode {
         options.math_mode = match math_mode.to_ascii_lowercase().as_str() {
-            "katex" => render::MathMode::Katex,
             "lualatex" => render::MathMode::Lualatex,
             "latex" => render::MathMode::Latex,
             "fallback" => render::MathMode::Fallback,
             value => anyhow::bail!(
-                "unsupported math mode `{value}`; use `katex`, `lualatex`, `latex`, or `fallback`"
+                "unsupported math mode `{value}`; use `lualatex`, `latex`, or `fallback`"
             ),
         };
     }
