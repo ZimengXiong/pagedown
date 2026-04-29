@@ -1,0 +1,598 @@
+%PDF-1.3
+%Л­Ро
+1 0 obj
+<</Type/Pages/Count 1/Kids[8 0 R]>>
+endobj
+2 0 obj
+<</Type/Font/Subtype/Type1/BaseFont/Times-Roman/Encoding/WinAnsiEncoding>>
+endobj
+3 0 obj
+<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold/Encoding/WinAnsiEncoding>>
+endobj
+4 0 obj
+<</Type/Font/Subtype/Type1/BaseFont/Courier/Encoding/WinAnsiEncoding>>
+endobj
+5 0 obj
+<</F1 2 0 R/F6 3 0 R/F9 4 0 R>>
+endobj
+6 0 obj
+<<>>
+endobj
+7 0 obj
+<<>>
+endobj
+8 0 obj
+<</Type/Page/MediaBox[0 0 612 792]/TrimBox[0 0 612 792]/CropBox[0 0 612 792]/Parent 1 0 R/Resources 9 0 R/Contents 10 0 R/Annots[]>>
+endobj
+9 0 obj
+<</Font 5 0 R/XObject 6 0 R/ExtGState 7 0 R>>
+endobj
+10 0 obj
+<</Length 6665>>stream
+BT
+56 728.357 Td
+/F6 26 Tf
+32.5 TL
+0.07 0.11 0.16 rg
+(Pagedown) Tj
+ET
+BT
+56 703.17 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(A CLI-only Markdown-to-PDF renderer in Rust. Pagedown parses Markdown into a small document model, lays it out) Tj
+ET
+BT
+56 690.17 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(directly, and paints PDF primitives. It does not render HTML and print a browser page.) Tj
+ET
+BT
+56 653.1675 Td
+/F6 15 Tf
+18.75 TL
+0.1 0.14 0.19 rg
+(Quickstart) Tj
+ET
+0.965 0.972 0.982 rg
+56 605.8 500 37.2 re
+n
+0.24 0.55 0.34 RG
+1.8 w
+0 J
+59 636 m
+59 612.8 l
+S
+BT
+66 629.3 Td
+/F6 6.7 Tf
+8.375 TL
+0.43 0.49 0.58 rg
+(SH) Tj
+ET
+BT
+66 616 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(pagedown) Tj
+ET
+BT
+104.4 616 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( input.md) Tj
+ET
+BT
+56 588.97 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(Writes ) Tj
+ET
+0.935 0.945 0.958 rg
+85.16 585.0826 50.759995 11 re
+n
+BT
+85.16 588.97 Td
+/F9 9.4 Tf
+11.75 TL
+0.05 0.11 0.18 rg
+(input.pdf) Tj
+ET
+BT
+135.92 588.97 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+( next to ) Tj
+ET
+0.935 0.945 0.958 rg
+168.42 585.0826 45.12 11 re
+n
+BT
+168.42 588.97 Td
+/F9 9.4 Tf
+11.75 TL
+0.05 0.11 0.18 rg
+(input.md) Tj
+ET
+BT
+213.54 588.97 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(. Relative images are resolved from the input file's directory.) Tj
+ET
+BT
+56 551.9675 Td
+/F6 15 Tf
+18.75 TL
+0.1 0.14 0.19 rg
+(Install) Tj
+ET
+0.965 0.972 0.982 rg
+56 504.59998 500 37.2 re
+n
+0.24 0.55 0.34 RG
+1.8 w
+0 J
+59 534.8 m
+59 511.59998 l
+S
+BT
+66 528.1 Td
+/F6 6.7 Tf
+8.375 TL
+0.43 0.49 0.58 rg
+(SH) Tj
+ET
+BT
+66 514.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(cargo) Tj
+ET
+BT
+90 514.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( install) Tj
+ET
+BT
+128.4 514.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( --) Tj
+ET
+BT
+142.79999 514.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(path) Tj
+ET
+BT
+161.99998 514.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( .) Tj
+ET
+BT
+56 487.77002 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(Run without installing: ) Tj
+ET
+0.935 0.945 0.958 rg
+150.73999 483.88263 118.439995 11 re
+n
+BT
+150.73999 487.77002 Td
+/F9 9.4 Tf
+11.75 TL
+0.05 0.11 0.18 rg
+(cargo run -- input.md) Tj
+ET
+BT
+56 450.76752 Td
+/F6 15 Tf
+18.75 TL
+0.1 0.14 0.19 rg
+(Common Commands) Tj
+ET
+0.965 0.972 0.982 rg
+56 383 500 57.6 re
+n
+0.24 0.55 0.34 RG
+1.8 w
+0 J
+59 433.6 m
+59 390 l
+S
+BT
+66 426.9 Td
+/F6 6.7 Tf
+8.375 TL
+0.43 0.49 0.58 rg
+(SH) Tj
+ET
+BT
+66 413.6 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(pagedown) Tj
+ET
+BT
+104.4 413.6 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( input.md) Tj
+ET
+BT
+147.6 413.6 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( --) Tj
+ET
+BT
+162 413.6 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(output) Tj
+ET
+BT
+190.8 413.6 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( report.pdf) Tj
+ET
+BT
+66 403.4 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(pagedown) Tj
+ET
+BT
+104.4 403.4 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( input.md) Tj
+ET
+BT
+147.6 403.4 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( --) Tj
+ET
+BT
+162 403.4 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(config) Tj
+ET
+BT
+190.8 403.4 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( examples/render-config.toml) Tj
+ET
+BT
+66 393.19998 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(pagedown) Tj
+ET
+BT
+104.4 393.19998 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( input.md) Tj
+ET
+BT
+147.6 393.19998 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( --) Tj
+ET
+BT
+162 393.19998 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(page-size) Tj
+ET
+BT
+205.2 393.19998 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( a4) Tj
+ET
+BT
+219.59999 393.19998 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( --) Tj
+ET
+BT
+233.99998 393.19998 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(no-page-numbers) Tj
+ET
+BT
+56 349.1675 Td
+/F6 15 Tf
+18.75 TL
+0.1 0.14 0.19 rg
+(Math) Tj
+ET
+0.965 0.972 0.982 rg
+56 291.6 500 47.4 re
+n
+0.24 0.55 0.34 RG
+1.8 w
+0 J
+59 332 m
+59 298.6 l
+S
+BT
+66 325.3 Td
+/F6 6.7 Tf
+8.375 TL
+0.43 0.49 0.58 rg
+(SH) Tj
+ET
+BT
+66 312 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(pagedown) Tj
+ET
+BT
+104.4 312 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( input.md) Tj
+ET
+BT
+147.6 312 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( --) Tj
+ET
+BT
+162 312 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(math-mode) Tj
+ET
+BT
+205.2 312 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( lualatex) Tj
+ET
+BT
+66 301.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(pagedown) Tj
+ET
+BT
+104.4 301.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( input.md) Tj
+ET
+BT
+147.6 301.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( --) Tj
+ET
+BT
+162 301.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+(math-mode) Tj
+ET
+BT
+205.2 301.8 Td
+/F9 8 Tf
+10 TL
+0.19607843 0.19607843 0.19607843 rg
+( fallback) Tj
+ET
+BT
+56 274.77002 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(Main uses ) Tj
+ET
+0.935 0.945 0.958 rg
+99.33 270.88263 45.12 11 re
+n
+BT
+99.33 274.77002 Td
+/F9 9.4 Tf
+11.75 TL
+0.05 0.11 0.18 rg
+(lualatex) Tj
+ET
+BT
+144.45 274.77002 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+( by default. Install a TeX distribution with ) Tj
+ET
+0.935 0.945 0.958 rg
+315.83002 270.88263 45.12 11 re
+n
+BT
+315.83002 274.77002 Td
+/F9 9.4 Tf
+11.75 TL
+0.05 0.11 0.18 rg
+(lualatex) Tj
+ET
+BT
+360.95 274.77002 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(, ) Tj
+ET
+0.935 0.945 0.958 rg
+365.95 270.88263 28.199999 11 re
+n
+BT
+365.95 274.77002 Td
+/F9 9.4 Tf
+11.75 TL
+0.05 0.11 0.18 rg
+(latex) Tj
+ET
+BT
+394.15002 274.77002 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(, and ) Tj
+ET
+0.935 0.945 0.958 rg
+416.09003 270.88263 39.48 11 re
+n
+BT
+416.09003 274.77002 Td
+/F9 9.4 Tf
+11.75 TL
+0.05 0.11 0.18 rg
+(dvisvgm) Tj
+ET
+BT
+455.57004 274.77002 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+( for full math support.) Tj
+ET
+BT
+56 261.76996 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(Use ) Tj
+ET
+0.935 0.945 0.958 rg
+74.05 257.88257 45.12 11 re
+n
+BT
+74.05 261.76996 Td
+/F9 9.4 Tf
+11.75 TL
+0.05 0.11 0.18 rg
+(fallback) Tj
+ET
+BT
+119.17 261.76996 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+( when TeX is unavailable.) Tj
+ET
+BT
+56 224.76746 Td
+/F6 15 Tf
+18.75 TL
+0.1 0.14 0.19 rg
+(Status) Tj
+ET
+0.935 0.945 0.958 rg
+56 201.88257 22.56 11 re
+n
+BT
+56 205.76996 Td
+/F9 9.4 Tf
+11.75 TL
+0.05 0.11 0.18 rg
+(main) Tj
+ET
+BT
+78.56 205.76996 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+( is intentionally CLI-only. The browser/WASM app is not supported here. This README page is rendered by) Tj
+ET
+BT
+56 192.76996 Td
+/F1 10 Tf
+12.5 TL
+0.13 0.14 0.17 rg
+(Pagedown.) Tj
+ET
+endstream 
+endobj
+11 0 obj
+<</Type/Catalog/PageLayout/OneColumn/PageMode/UseNone/Pages 1 0 R>>
+endobj
+12 0 obj
+<</Trapped/False/CreationDate(D:19700101000000+00'00')/ModDate(D:19700101000000+00'00')/GTS_PDFXVersion()/Title<FEFF00500061006700650064006F0077006E>/Author()/Creator()/Producer()/Subject()/Identifier()/Keywords()>>
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000015 00000 n 
+0000000066 00000 n 
+0000000156 00000 n 
+0000000249 00000 n 
+0000000335 00000 n 
+0000000382 00000 n 
+0000000402 00000 n 
+0000000422 00000 n 
+0000000570 00000 n 
+0000000631 00000 n 
+0000007347 00000 n 
+0000007431 00000 n 
+trailer
+<</Root 11 0 R/Info 12 0 R/ID[(HGJBDAIGCHFGIHDGCIGHCIGJEBHIGBEF)(HEIGIDGCBAAHFGBHAEFHCBHGAJHCJDHF)]/Size 13>>
+startxref
+7663
+%%EOF
