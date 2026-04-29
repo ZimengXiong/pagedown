@@ -1,8 +1,9 @@
 use pulldown_cmark::{
-    Alignment as MdAlignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd,
+    Alignment as MdAlignment, BlockQuoteKind, CodeBlockKind, Event, HeadingLevel, Options, Parser,
+    Tag, TagEnd,
 };
 
-use crate::ir::{Alignment, Block, Document, Inline, Table};
+use crate::ir::{Alignment, Block, Document, Inline, ListItem, QuoteKind, Table};
 
 #[derive(Debug)]
 enum ActiveBlock {
@@ -12,8 +13,16 @@ enum ActiveBlock {
 }
 
 #[derive(Debug)]
-struct ActiveLink {
-    href: String,
+enum InlineContainerKind {
+    Link { href: String },
+    Emphasis,
+    Strong,
+    Strikethrough,
+}
+
+#[derive(Debug)]
+struct InlineContainer {
+    kind: InlineContainerKind,
     content: Vec<Inline>,
 }
 
@@ -21,6 +30,28 @@ struct ActiveLink {
 struct ActiveImage {
     src: String,
     alt: String,
+}
+
+#[derive(Debug)]
+struct ActiveQuote {
+    kind: QuoteKind,
+    content: Vec<Inline>,
+}
+
+#[derive(Debug)]
+struct ActiveList {
+    ordered: bool,
+    start: u64,
+    items: Vec<ListItem>,
+    current_item: Vec<Inline>,
+    current_checked: Option<bool>,
+    in_item: bool,
+}
+
+#[derive(Debug)]
+struct ActiveFootnote {
+    label: String,
+    content: Vec<Inline>,
 }
 
 #[derive(Debug)]
@@ -37,21 +68,31 @@ struct ActiveTable {
 pub fn parse_markdown(input: &str) -> Document {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    options.insert(Options::ENABLE_TASKLISTS);
     options.insert(Options::ENABLE_MATH);
     options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_GFM);
 
     let parser = Parser::new_ext(input, options);
     let mut blocks = Vec::new();
     let mut active_block: Option<ActiveBlock> = None;
-    let mut active_link: Option<ActiveLink> = None;
+    let mut inline_stack: Vec<InlineContainer> = Vec::new();
     let mut active_image: Option<ActiveImage> = None;
+    let mut active_quote: Option<ActiveQuote> = None;
+    let mut active_list: Option<ActiveList> = None;
+    let mut active_footnote: Option<ActiveFootnote> = None;
     let mut active_table: Option<ActiveTable> = None;
 
     for event in parser {
         match event {
             Event::Start(tag) => match tag {
                 Tag::Paragraph => {
-                    if active_table.as_ref().is_none_or(|table| !table.in_cell) {
+                    if active_table.as_ref().is_none_or(|table| !table.in_cell)
+                        && active_quote.is_none()
+                        && active_list.as_ref().is_none_or(|list| !list.in_item)
+                        && active_footnote.is_none()
+                    {
                         active_block = Some(ActiveBlock::Paragraph(Vec::new()));
                     }
                 }
@@ -67,9 +108,52 @@ pub fn parse_markdown(input: &str) -> Document {
                         text: String::new(),
                     });
                 }
+                Tag::BlockQuote(kind) => {
+                    active_quote = Some(ActiveQuote {
+                        kind: quote_kind(kind),
+                        content: Vec::new(),
+                    });
+                }
+                Tag::List(start) => {
+                    active_list = Some(ActiveList {
+                        ordered: start.is_some(),
+                        start: start.unwrap_or(1),
+                        items: Vec::new(),
+                        current_item: Vec::new(),
+                        current_checked: None,
+                        in_item: false,
+                    });
+                }
+                Tag::Item => {
+                    if let Some(list) = &mut active_list {
+                        list.current_item = Vec::new();
+                        list.current_checked = None;
+                        list.in_item = true;
+                    }
+                }
+                Tag::FootnoteDefinition(label) => {
+                    active_footnote = Some(ActiveFootnote {
+                        label: label.to_string(),
+                        content: Vec::new(),
+                    });
+                }
+                Tag::Emphasis => inline_stack.push(InlineContainer {
+                    kind: InlineContainerKind::Emphasis,
+                    content: Vec::new(),
+                }),
+                Tag::Strong => inline_stack.push(InlineContainer {
+                    kind: InlineContainerKind::Strong,
+                    content: Vec::new(),
+                }),
+                Tag::Strikethrough => inline_stack.push(InlineContainer {
+                    kind: InlineContainerKind::Strikethrough,
+                    content: Vec::new(),
+                }),
                 Tag::Link { dest_url, .. } => {
-                    active_link = Some(ActiveLink {
-                        href: dest_url.to_string(),
+                    inline_stack.push(InlineContainer {
+                        kind: InlineContainerKind::Link {
+                            href: dest_url.to_string(),
+                        },
                         content: Vec::new(),
                     });
                 }
@@ -114,6 +198,17 @@ pub fn parse_markdown(input: &str) -> Document {
                     if active_table.as_ref().is_some_and(|table| table.in_cell) {
                         continue;
                     }
+                    if active_quote.is_some()
+                        || active_list.as_ref().is_some_and(|list| list.in_item)
+                        || active_footnote.is_some()
+                    {
+                        push_context_separator(
+                            &mut active_quote,
+                            &mut active_list,
+                            &mut active_footnote,
+                        );
+                        continue;
+                    }
                     if let Some(ActiveBlock::Paragraph(content)) = active_block.take() {
                         push_paragraph_or_math(&mut blocks, content);
                     }
@@ -128,15 +223,62 @@ pub fn parse_markdown(input: &str) -> Document {
                         blocks.push(Block::CodeBlock { lang, text });
                     }
                 }
-                TagEnd::Link => {
-                    if let Some(link) = active_link.take() {
+                TagEnd::BlockQuote(_) => {
+                    if let Some(quote) = active_quote.take() {
+                        blocks.push(Block::Quote {
+                            kind: quote.kind,
+                            content: trim_inline_edges(quote.content),
+                        });
+                    }
+                }
+                TagEnd::List(_) => {
+                    if let Some(list) = active_list.take() {
+                        blocks.push(Block::List {
+                            ordered: list.ordered,
+                            start: list.start,
+                            items: list.items,
+                        });
+                    }
+                }
+                TagEnd::Item => {
+                    if let Some(list) = &mut active_list {
+                        list.items.push(ListItem {
+                            checked: list.current_checked,
+                            content: trim_inline_edges(std::mem::take(&mut list.current_item)),
+                        });
+                        list.current_checked = None;
+                        list.in_item = false;
+                    }
+                }
+                TagEnd::FootnoteDefinition => {
+                    if let Some(footnote) = active_footnote.take() {
+                        blocks.push(Block::Footnote {
+                            label: footnote.label,
+                            content: trim_inline_edges(footnote.content),
+                        });
+                    }
+                }
+                TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough | TagEnd::Link => {
+                    if let Some(container) = inline_stack.pop() {
+                        let inline = match container.kind {
+                            InlineContainerKind::Link { href } => Inline::Link {
+                                href,
+                                content: container.content,
+                            },
+                            InlineContainerKind::Emphasis => Inline::Emphasis(container.content),
+                            InlineContainerKind::Strong => Inline::Strong(container.content),
+                            InlineContainerKind::Strikethrough => {
+                                Inline::Strikethrough(container.content)
+                            }
+                        };
                         push_inline(
                             &mut active_block,
                             &mut active_table,
-                            Inline::Link {
-                                href: link.href,
-                                content: link.content,
-                            },
+                            &mut active_quote,
+                            &mut active_list,
+                            &mut active_footnote,
+                            &mut inline_stack,
+                            inline,
                         );
                     }
                 }
@@ -187,22 +329,30 @@ pub fn parse_markdown(input: &str) -> Document {
             Event::Text(text) => {
                 if let Some(image) = &mut active_image {
                     image.alt.push_str(&text);
-                } else if let Some(link) = &mut active_link {
-                    link.content.push(Inline::Text(text.to_string()));
                 } else if let Some(ActiveBlock::CodeBlock { text: code, .. }) = &mut active_block {
                     code.push_str(&text);
                 } else {
-                    push_inline(
-                        &mut active_block,
-                        &mut active_table,
-                        Inline::Text(text.to_string()),
-                    );
+                    for inline in text_to_inlines(&text) {
+                        push_inline(
+                            &mut active_block,
+                            &mut active_table,
+                            &mut active_quote,
+                            &mut active_list,
+                            &mut active_footnote,
+                            &mut inline_stack,
+                            inline,
+                        );
+                    }
                 }
             }
             Event::Code(text) => {
                 push_inline(
                     &mut active_block,
                     &mut active_table,
+                    &mut active_quote,
+                    &mut active_list,
+                    &mut active_footnote,
+                    &mut inline_stack,
                     Inline::Code(text.to_string()),
                 );
             }
@@ -210,6 +360,10 @@ pub fn parse_markdown(input: &str) -> Document {
                 push_inline(
                     &mut active_block,
                     &mut active_table,
+                    &mut active_quote,
+                    &mut active_list,
+                    &mut active_footnote,
+                    &mut inline_stack,
                     Inline::Math(text.to_string()),
                 );
             }
@@ -220,16 +374,40 @@ pub fn parse_markdown(input: &str) -> Document {
                     push_inline(
                         &mut active_block,
                         &mut active_table,
+                        &mut active_quote,
+                        &mut active_list,
+                        &mut active_footnote,
+                        &mut inline_stack,
                         Inline::Math(text.to_string()),
                     );
                 }
+            }
+            Event::FootnoteReference(label) => {
+                push_inline(
+                    &mut active_block,
+                    &mut active_table,
+                    &mut active_quote,
+                    &mut active_list,
+                    &mut active_footnote,
+                    &mut inline_stack,
+                    Inline::FootnoteRef(label.to_string()),
+                );
             }
             Event::SoftBreak | Event::HardBreak => {
                 push_inline(
                     &mut active_block,
                     &mut active_table,
+                    &mut active_quote,
+                    &mut active_list,
+                    &mut active_footnote,
+                    &mut inline_stack,
                     Inline::Text(" ".to_string()),
                 );
+            }
+            Event::TaskListMarker(checked) => {
+                if let Some(list) = &mut active_list {
+                    list.current_checked = Some(checked);
+                }
             }
             Event::Rule => blocks.push(Block::Divider),
             _ => {}
@@ -242,24 +420,118 @@ pub fn parse_markdown(input: &str) -> Document {
 fn push_inline(
     active_block: &mut Option<ActiveBlock>,
     active_table: &mut Option<ActiveTable>,
+    active_quote: &mut Option<ActiveQuote>,
+    active_list: &mut Option<ActiveList>,
+    active_footnote: &mut Option<ActiveFootnote>,
+    inline_stack: &mut Vec<InlineContainer>,
     inline: Inline,
 ) {
+    if let Some(container) = inline_stack.last_mut() {
+        push_inline_vec(&mut container.content, inline);
+        return;
+    }
+
     if let Some(table) = active_table {
         if table.in_cell {
-            table.current_cell.push(inline);
+            push_inline_vec(&mut table.current_cell, inline);
             return;
         }
     }
 
+    if let Some(list) = active_list {
+        if list.in_item {
+            push_inline_vec(&mut list.current_item, inline);
+            return;
+        }
+    }
+
+    if let Some(quote) = active_quote {
+        push_inline_vec(&mut quote.content, inline);
+        return;
+    }
+
+    if let Some(footnote) = active_footnote {
+        push_inline_vec(&mut footnote.content, inline);
+        return;
+    }
+
     match active_block {
         Some(ActiveBlock::Paragraph(content)) | Some(ActiveBlock::Heading { content, .. }) => {
-            content.push(inline);
+            push_inline_vec(content, inline);
         }
         Some(ActiveBlock::CodeBlock { text, .. }) => {
             text.push_str(&inline.plain_text());
         }
         None => {
             *active_block = Some(ActiveBlock::Paragraph(vec![inline]));
+        }
+    }
+}
+
+fn push_inline_vec(content: &mut Vec<Inline>, inline: Inline) {
+    if let Inline::Text(text) = &inline {
+        if text == "]" && content.len() >= 2 {
+            let last = content.pop();
+            let prev = content.pop();
+            match (prev, last) {
+                (Some(Inline::Text(open)), Some(Inline::Text(key)))
+                    if open == "[" && key.starts_with('@') && is_citation_key(&key[1..]) =>
+                {
+                    content.push(Inline::Citation(key[1..].to_string()));
+                    return;
+                }
+                (Some(Inline::Text(open)), Some(Inline::Text(key)))
+                    if open == "[" && key.starts_with('^') && is_citation_key(&key[1..]) =>
+                {
+                    content.push(Inline::FootnoteRef(key[1..].to_string()));
+                    return;
+                }
+                (prev, last) => {
+                    if let Some(prev) = prev {
+                        content.push(prev);
+                    }
+                    if let Some(last) = last {
+                        content.push(last);
+                    }
+                }
+            }
+        }
+        if content
+            .last()
+            .is_some_and(|inline| matches!(inline, Inline::Citation(_) | Inline::FootnoteRef(_)))
+            && text
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric())
+        {
+            content.push(Inline::Text(format!(" {text}")));
+            return;
+        }
+    }
+    content.push(inline);
+}
+
+fn push_context_separator(
+    active_quote: &mut Option<ActiveQuote>,
+    active_list: &mut Option<ActiveList>,
+    active_footnote: &mut Option<ActiveFootnote>,
+) {
+    let separator = Inline::Text(" ".to_string());
+    if let Some(list) = active_list {
+        if list.in_item && !list.current_item.last().is_some_and(is_space_inline) {
+            list.current_item.push(separator);
+        }
+        return;
+    }
+    if let Some(quote) = active_quote {
+        if !quote.content.last().is_some_and(is_space_inline) {
+            quote.content.push(separator);
+        }
+        return;
+    }
+    if let Some(footnote) = active_footnote {
+        if !footnote.content.last().is_some_and(is_space_inline) {
+            footnote.content.push(separator);
         }
     }
 }
@@ -307,6 +579,66 @@ fn map_alignment(alignment: MdAlignment) -> Alignment {
         MdAlignment::Right => Alignment::Right,
         MdAlignment::None => Alignment::None,
     }
+}
+
+fn quote_kind(kind: Option<BlockQuoteKind>) -> QuoteKind {
+    match kind {
+        Some(BlockQuoteKind::Note) => QuoteKind::Note,
+        Some(BlockQuoteKind::Tip) => QuoteKind::Tip,
+        Some(BlockQuoteKind::Important) => QuoteKind::Important,
+        Some(BlockQuoteKind::Warning) => QuoteKind::Warning,
+        Some(BlockQuoteKind::Caution) => QuoteKind::Caution,
+        None => QuoteKind::Regular,
+    }
+}
+
+fn trim_inline_edges(mut content: Vec<Inline>) -> Vec<Inline> {
+    while content.first().is_some_and(is_space_inline) {
+        content.remove(0);
+    }
+    while content.last().is_some_and(is_space_inline) {
+        content.pop();
+    }
+    content
+}
+
+fn is_space_inline(inline: &Inline) -> bool {
+    matches!(inline, Inline::Text(text) if text.trim().is_empty())
+}
+
+fn text_to_inlines(text: &str) -> Vec<Inline> {
+    let mut out = Vec::new();
+    let mut rest = text;
+
+    while let Some(start) = rest.find("[@") {
+        if start > 0 {
+            out.push(Inline::Text(rest[..start].to_string()));
+        }
+        let citation_start = start + 2;
+        if let Some(end) = rest[citation_start..].find(']') {
+            let key = &rest[citation_start..citation_start + end];
+            if is_citation_key(key) {
+                out.push(Inline::Citation(key.to_string()));
+                rest = &rest[citation_start + end + 1..];
+                continue;
+            }
+        }
+        out.push(Inline::Text(rest[start..start + 2].to_string()));
+        rest = &rest[start + 2..];
+    }
+
+    if !rest.is_empty() {
+        out.push(Inline::Text(rest.to_string()));
+    }
+    out
+}
+
+fn is_citation_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.chars().all(|ch| {
+            ch.is_ascii_alphanumeric()
+                || matches!(ch, '_' | '-' | ':' | '.' | ';' | ' ' | '@' | ',')
+        })
 }
 
 #[cfg(test)]
@@ -379,5 +711,49 @@ $$
         assert_eq!(table.rows.len(), 1);
         assert!(matches!(table.alignments[0], Alignment::Left));
         assert!(matches!(table.alignments[1], Alignment::Right));
+    }
+
+    #[test]
+    fn parses_notes_lists_footnotes_and_citations() {
+        let doc = parse_markdown(
+            r#"> [!NOTE]
+> Callouts render as native note blocks with **strong** text.
+
+- [x] Done item with [@doe2024]
+- [ ] Pending item
+
+Footnote ref[^why].
+
+[^why]: Footnote body with *emphasis*.
+"#,
+        );
+
+        assert!(matches!(
+            doc.blocks[0],
+            Block::Quote {
+                kind: QuoteKind::Note,
+                ..
+            }
+        ));
+        let Block::List { items, .. } = &doc.blocks[1] else {
+            panic!("expected list");
+        };
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].checked, Some(true));
+        assert!(
+            items[0]
+                .content
+                .iter()
+                .any(|inline| matches!(inline, Inline::Citation(key) if key == "doe2024"))
+        );
+        let Block::Paragraph(inlines) = &doc.blocks[2] else {
+            panic!("expected paragraph");
+        };
+        assert!(
+            inlines
+                .iter()
+                .any(|inline| matches!(inline, Inline::FootnoteRef(label) if label == "why"))
+        );
+        assert!(matches!(doc.blocks[3], Block::Footnote { .. }));
     }
 }

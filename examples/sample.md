@@ -8,6 +8,19 @@ The page uses a quiet serif body face, a stronger sans heading face, and a modul
 
 Inline code should sit inside the line without throwing off the baseline. Links are colored and underlined, while math remains visually distinct: $a^2 + b^2 = c^2$.
 
+## Notes, Lists, and Citations
+
+> [!NOTE]
+> Callouts use GitHub-style note syntax and render as native PDF blocks, not HTML boxes. They can include **strong text**, *emphasis*, inline code like `RenderOptions`, and citations like [@knuth1984].
+
+- [x] Task list markers keep their checked state.
+- [ ] Plain list layout shares the same body rhythm as paragraphs.
+- Citation markers such as [@lamport1994] are styled inline until bibliography resolution exists.
+
+Footnote references render inline[^note].
+
+[^note]: Footnotes are parsed from standard GitHub-style Markdown definitions and rendered in compact note text.
+
 ---
 
 ## Code Blocks
@@ -29,6 +42,11 @@ fn wrap_line(words: &[&str], max_width: f32) -> Vec<String> {
     lines.push(current.trim_end().to_owned());
     lines
 }
+```
+
+```python
+def accent_for(language: str) -> str:
+    return {"python": "blue", "rust": "red"}.get(language, "slate")
 ```
 
 ## Display Math

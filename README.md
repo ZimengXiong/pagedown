@@ -9,10 +9,15 @@ A native Markdown-to-PDF renderer in Rust. It parses Markdown into a small docum
 - links
 - inline code
 - fenced code blocks with syntax highlighting
+- language-aware code block accent bars
 - inline math and display math
 - horizontal rules from Markdown dividers
+- blockquotes and GitHub-style callouts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`)
+- ordered, unordered, and task lists
 - tables
 - local images with optional captions from alt text
+- footnote references and definitions
+- lightweight citation markers such as `[@doe2024]`
 
 ## Requirements
 
@@ -56,4 +61,6 @@ cargo run -- input.md --no-code-highlighting --no-page-numbers --no-image-captio
 
 ## Design Notes
 
-The default typography uses a serif body face, sans-serif headings, generous paragraph leading, compact code blocks, table grid lines only for tables, and horizontal rules only when the Markdown contains a divider. Code highlighting is enabled by default through `syntect`.
+The default typography uses a serif body face, sans-serif headings, generous paragraph leading, compact code blocks, table grid lines only for tables, and horizontal rules only when the Markdown contains a divider. Code highlighting is enabled by default through `syntect`, and code block accent bars are colored from the fence language when known.
+
+Citations are currently inline citation tokens, not a full bibliography engine. Resolving `.bib` or CSL JSON into a references section is a separate backend layer.

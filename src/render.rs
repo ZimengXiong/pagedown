@@ -19,7 +19,7 @@ use syntect::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use crate::ir::{Alignment, Block, Document, Inline, inlines_to_plain_text};
+use crate::ir::{Alignment, Block, Document, Inline, ListItem, QuoteKind, inlines_to_plain_text};
 
 const PAGE_WIDTH: f32 = 612.0;
 const PAGE_HEIGHT: f32 = 792.0;
@@ -93,9 +93,11 @@ impl Default for RenderOptions {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FontFace {
     Serif,
+    SerifBold,
     SerifItalic,
     Sans,
     SansBold,
+    SansItalic,
     Mono,
     MonoBold,
 }
@@ -107,6 +109,7 @@ struct Style {
     color: (f32, f32, f32),
     bg: Option<(f32, f32, f32)>,
     underline: bool,
+    strike: bool,
     pad_x: f32,
 }
 
@@ -205,8 +208,15 @@ impl<'a> Renderer<'a> {
             Block::CodeBlock { lang, text } => self.code_block(lang.as_deref(), text),
             Block::MathBlock(tex) => self.math_block(tex),
             Block::Divider => self.divider(),
+            Block::Quote { kind, content } => self.quote(*kind, content),
+            Block::List {
+                ordered,
+                start,
+                items,
+            } => self.list(*ordered, *start, items),
             Block::Table(table) => self.table(table),
             Block::Image { src, alt } => self.image(src, alt),
+            Block::Footnote { label, content } => self.footnote(label, content),
         }
     }
 
@@ -235,6 +245,7 @@ impl<'a> Renderer<'a> {
             },
             bg: None,
             underline: false,
+            strike: false,
             pad_x: 0.0,
         };
         let lines = self.wrap_inlines(content, style, self.content_width())?;
@@ -277,8 +288,9 @@ impl<'a> Renderer<'a> {
 
         let x = self.options.margin_x_pt;
         let y = self.cursor_y;
+        let accent = code_accent(lang);
         self.rect(x, y, self.content_width(), block_h, (0.965, 0.972, 0.982));
-        self.draw_vertical_rule(x + 4.0, y + 10.0, block_h - 20.0, 2.2, (0.83, 0.22, 0.18));
+        self.draw_vertical_rule(x + 4.0, y + 10.0, block_h - 20.0, 2.2, accent);
 
         if let Some(lang) = lang {
             self.text(
@@ -369,6 +381,7 @@ impl<'a> Renderer<'a> {
             color: (0.13, 0.14, 0.17),
             bg: None,
             underline: false,
+            strike: false,
             pad_x: 0.0,
         }
     }
@@ -402,6 +415,106 @@ impl<'a> Renderer<'a> {
         Ok(())
     }
 
+    fn quote(&mut self, kind: QuoteKind, content: &[Inline]) -> Result<()> {
+        let (title, accent, fill, text_color) = quote_palette(kind);
+        let x = self.options.margin_x_pt;
+        let pad_x = 16.0;
+        let pad_y = 12.0;
+        let title_h = if title.is_some() { 13.0 } else { 0.0 };
+        let style = Style {
+            font: if kind == QuoteKind::Regular {
+                FontFace::SerifItalic
+            } else {
+                FontFace::Serif
+            },
+            size: self.options.body_size_pt,
+            color: text_color,
+            bg: None,
+            underline: false,
+            strike: false,
+            pad_x: 0.0,
+        };
+        let lines = self.wrap_inlines(content, style, self.content_width() - pad_x * 2.0)?;
+        let line_h = self.options.body_line_height_pt;
+        let block_h = pad_y * 2.0 + title_h + lines.len().max(1) as f32 * line_h;
+        self.ensure_height(block_h + 14.0);
+
+        let y = self.cursor_y;
+        self.rect(x, y, self.content_width(), block_h, fill);
+        self.draw_vertical_rule(x + 4.0, y + 9.0, block_h - 18.0, 2.2, accent);
+        if let Some(title) = title {
+            self.text(
+                x + pad_x,
+                y + pad_y - 1.0,
+                FontFace::SansBold,
+                8.4,
+                accent,
+                title,
+            );
+        }
+        self.draw_lines(&lines, x + pad_x, y + pad_y + title_h, line_h);
+        self.cursor_y += block_h + 14.0;
+        Ok(())
+    }
+
+    fn list(&mut self, ordered: bool, start: u64, items: &[ListItem]) -> Result<()> {
+        let marker_w = 24.0;
+        let item_gap = 4.5;
+        let line_h = self.options.body_line_height_pt;
+        let style = self.body_style();
+        self.ensure_height(line_h + 12.0);
+
+        for (idx, item) in items.iter().enumerate() {
+            let marker = list_marker(ordered, start + idx as u64, item.checked);
+            let lines = self.wrap_inlines(&item.content, style, self.content_width() - marker_w)?;
+            let item_h = lines.len().max(1) as f32 * line_h;
+            self.ensure_height(item_h + item_gap + 8.0);
+            let y = self.cursor_y;
+            self.text(
+                self.options.margin_x_pt,
+                y,
+                FontFace::SansBold,
+                self.options.body_size_pt * 0.92,
+                (0.32, 0.38, 0.46),
+                &marker,
+            );
+            self.draw_lines(&lines, self.options.margin_x_pt + marker_w, y, line_h);
+            self.cursor_y += item_h + item_gap;
+        }
+        self.cursor_y += 6.0;
+        Ok(())
+    }
+
+    fn footnote(&mut self, label: &str, content: &[Inline]) -> Result<()> {
+        let label_w = 24.0;
+        let line_h = 12.2;
+        let style = Style {
+            font: FontFace::Serif,
+            size: 8.9,
+            color: (0.28, 0.31, 0.36),
+            bg: None,
+            underline: false,
+            strike: false,
+            pad_x: 0.0,
+        };
+        let lines = self.wrap_inlines(content, style, self.content_width() - label_w)?;
+        let block_h = lines.len().max(1) as f32 * line_h + 4.0;
+        self.ensure_height(block_h + 4.0);
+
+        let y = self.cursor_y;
+        self.text(
+            self.options.margin_x_pt,
+            y,
+            FontFace::SansBold,
+            7.8,
+            (0.42, 0.47, 0.54),
+            &format!("{label}."),
+        );
+        self.draw_lines(&lines, self.options.margin_x_pt + label_w, y, line_h);
+        self.cursor_y += block_h;
+        Ok(())
+    }
+
     fn table(&mut self, table: &crate::ir::Table) -> Result<()> {
         let cols = table
             .header
@@ -431,6 +544,7 @@ impl<'a> Renderer<'a> {
                         color: (0.10, 0.13, 0.18),
                         bg: None,
                         underline: false,
+                        strike: false,
                         pad_x: 0.0,
                     }
                 } else {
@@ -440,6 +554,7 @@ impl<'a> Renderer<'a> {
                         color: (0.16, 0.18, 0.22),
                         bg: None,
                         underline: false,
+                        strike: false,
                         pad_x: 0.0,
                     }
                 };
@@ -695,6 +810,15 @@ impl<'a> Renderer<'a> {
                                 frag.style.color,
                             );
                         }
+                        if frag.style.strike {
+                            self.draw_rule_at(
+                                text_x,
+                                text_y + frag.style.size * 0.62,
+                                decoration_width(frag),
+                                0.45,
+                                frag.style.color,
+                            );
+                        }
                     }
                     FragmentKind::Math(math) => {
                         self.draw_math(math, text_x, line_y + math.y_offset)
@@ -850,6 +974,7 @@ impl<'a> Renderer<'a> {
                         color: (0.05, 0.11, 0.18),
                         bg: Some((0.935, 0.945, 0.958)),
                         underline: false,
+                        strike: false,
                         pad_x: 0.95,
                     },
                 )),
@@ -864,9 +989,33 @@ impl<'a> Renderer<'a> {
                             color: (0.08, 0.18, 0.32),
                             bg: None,
                             underline: false,
+                            strike: false,
                             pad_x: 1.0,
                         },
                     });
+                }
+                Inline::Emphasis(content) => {
+                    let mut style = base;
+                    style.font = match base.font {
+                        FontFace::Serif | FontFace::SerifBold => FontFace::SerifItalic,
+                        FontFace::Sans | FontFace::SansBold => FontFace::SansItalic,
+                        other => other,
+                    };
+                    self.push_inline_spans(content, style, spans)?;
+                }
+                Inline::Strong(content) => {
+                    let mut style = base;
+                    style.font = match base.font {
+                        FontFace::Serif | FontFace::SerifItalic => FontFace::SerifBold,
+                        FontFace::Sans | FontFace::SansItalic => FontFace::SansBold,
+                        other => other,
+                    };
+                    self.push_inline_spans(content, style, spans)?;
+                }
+                Inline::Strikethrough(content) => {
+                    let mut style = base;
+                    style.strike = true;
+                    self.push_inline_spans(content, style, spans)?;
                 }
                 Inline::Link { href, content } => {
                     let _target = href;
@@ -874,6 +1023,35 @@ impl<'a> Renderer<'a> {
                     link_style.color = (0.02, 0.28, 0.62);
                     link_style.underline = true;
                     self.push_inline_spans(content, link_style, spans)?;
+                }
+                Inline::FootnoteRef(label) => spans.push(text_fragment(
+                    label.clone(),
+                    Style {
+                        font: FontFace::SansBold,
+                        size: base.size * 0.58,
+                        color: (0.02, 0.28, 0.62),
+                        bg: None,
+                        underline: false,
+                        strike: false,
+                        pad_x: -7.0,
+                    },
+                )),
+                Inline::Citation(key) => {
+                    let text = format!("[@{key}]");
+                    let style = Style {
+                        font: FontFace::Sans,
+                        size: base.size * 0.88,
+                        color: (0.34, 0.26, 0.56),
+                        bg: Some((0.948, 0.942, 0.968)),
+                        underline: false,
+                        strike: false,
+                        pad_x: 1.1,
+                    };
+                    spans.push(Fragment {
+                        width: measure(&text, style.font, style.size) * 1.16,
+                        kind: FragmentKind::Text(text),
+                        style,
+                    });
                 }
             }
         }
@@ -959,9 +1137,11 @@ impl FontFace {
     fn to_builtin(self) -> BuiltinFont {
         match self {
             FontFace::Serif => BuiltinFont::TimesRoman,
+            FontFace::SerifBold => BuiltinFont::TimesBold,
             FontFace::SerifItalic => BuiltinFont::TimesItalic,
             FontFace::Sans => BuiltinFont::Helvetica,
             FontFace::SansBold => BuiltinFont::HelveticaBold,
+            FontFace::SansItalic => BuiltinFont::HelveticaOblique,
             FontFace::Mono => BuiltinFont::Courier,
             FontFace::MonoBold => BuiltinFont::CourierBold,
         }
@@ -989,6 +1169,10 @@ fn wrap_spans(spans: &[Fragment], max_width: f32) -> Vec<LayoutLine> {
                 push_fragment(&mut lines, &mut current, span.clone(), max_width)
             }
             FragmentKind::Text(text) => {
+                if span.style.bg.is_some() {
+                    push_fragment(&mut lines, &mut current, span.clone(), max_width);
+                    continue;
+                }
                 for token in tokenize(text) {
                     let is_space = token.trim().is_empty();
                     if is_space && current.fragments.is_empty() {
@@ -1079,6 +1263,7 @@ fn same_style(a: Style, b: Style) -> bool {
         && a.color == b.color
         && a.bg == b.bg
         && a.underline == b.underline
+        && a.strike == b.strike
         && (a.pad_x - b.pad_x).abs() < 0.01
 }
 
@@ -1124,7 +1309,7 @@ fn measure(text: &str, font: FontFace, size: f32) -> f32 {
 
     text.chars().fold(0.0, |acc, ch| {
         let factor = if ch == ' ' {
-            0.255
+            0.34
         } else if ".,:;!|`'".contains(ch) {
             0.255
         } else if "ilI[](){}".contains(ch) {
@@ -1148,7 +1333,7 @@ fn fragment_advance(fragment: &Fragment) -> f32 {
     } else {
         fragment.width
     };
-    width + fragment.style.pad_x * 2.0
+    (width + fragment.style.pad_x * 2.0).max(0.0)
 }
 
 fn decoration_width(fragment: &Fragment) -> f32 {
@@ -1159,9 +1344,86 @@ fn decoration_width(fragment: &Fragment) -> f32 {
     let width = measure(trimmed, fragment.style.font, fragment.style.size);
 
     match fragment.style.font {
-        FontFace::Serif | FontFace::SerifItalic => width * 0.92,
-        FontFace::Sans | FontFace::SansBold => width * 0.96,
+        FontFace::Serif | FontFace::SerifBold | FontFace::SerifItalic => width * 0.92,
+        FontFace::Sans | FontFace::SansBold | FontFace::SansItalic => width * 0.96,
         FontFace::Mono | FontFace::MonoBold => width,
+    }
+}
+
+fn code_accent(lang: Option<&str>) -> (f32, f32, f32) {
+    match lang.unwrap_or_default().to_ascii_lowercase().as_str() {
+        "rust" | "rs" => (0.82, 0.25, 0.18),
+        "typescript" | "ts" | "tsx" => (0.18, 0.41, 0.72),
+        "javascript" | "js" | "jsx" => (0.78, 0.56, 0.12),
+        "python" | "py" => (0.21, 0.45, 0.68),
+        "go" | "golang" => (0.00, 0.55, 0.70),
+        "swift" => (0.90, 0.35, 0.14),
+        "html" | "xml" => (0.86, 0.32, 0.18),
+        "css" | "scss" => (0.43, 0.30, 0.70),
+        "json" | "yaml" | "yml" | "toml" => (0.34, 0.48, 0.28),
+        "bash" | "sh" | "zsh" => (0.24, 0.55, 0.34),
+        "sql" => (0.56, 0.35, 0.70),
+        "tex" | "latex" => (0.12, 0.48, 0.56),
+        _ => (0.42, 0.47, 0.54),
+    }
+}
+
+fn quote_palette(
+    kind: QuoteKind,
+) -> (
+    Option<&'static str>,
+    (f32, f32, f32),
+    (f32, f32, f32),
+    (f32, f32, f32),
+) {
+    match kind {
+        QuoteKind::Regular => (
+            None,
+            (0.50, 0.55, 0.62),
+            (0.965, 0.970, 0.976),
+            (0.22, 0.25, 0.30),
+        ),
+        QuoteKind::Note => (
+            Some("NOTE"),
+            (0.08, 0.36, 0.72),
+            (0.940, 0.966, 0.995),
+            (0.12, 0.20, 0.32),
+        ),
+        QuoteKind::Tip => (
+            Some("TIP"),
+            (0.12, 0.55, 0.34),
+            (0.940, 0.980, 0.952),
+            (0.12, 0.25, 0.18),
+        ),
+        QuoteKind::Important => (
+            Some("IMPORTANT"),
+            (0.45, 0.26, 0.72),
+            (0.962, 0.948, 0.992),
+            (0.20, 0.16, 0.30),
+        ),
+        QuoteKind::Warning => (
+            Some("WARNING"),
+            (0.80, 0.48, 0.08),
+            (0.996, 0.970, 0.910),
+            (0.32, 0.22, 0.10),
+        ),
+        QuoteKind::Caution => (
+            Some("CAUTION"),
+            (0.78, 0.22, 0.20),
+            (0.994, 0.942, 0.938),
+            (0.32, 0.14, 0.14),
+        ),
+    }
+}
+
+fn list_marker(ordered: bool, number: u64, checked: Option<bool>) -> String {
+    if let Some(checked) = checked {
+        return if checked { "[x]" } else { "[ ]" }.to_string();
+    }
+    if ordered {
+        format!("{number}.")
+    } else {
+        "*".to_string()
     }
 }
 
@@ -1267,9 +1529,12 @@ fn estimated_keep_height(block: &Block) -> f32 {
             34.0 + lines * CODE_LINE
         }
         Block::MathBlock(_) => 72.0,
+        Block::Quote { .. } => 76.0,
+        Block::List { items, .. } => 30.0 + items.len().min(3) as f32 * 24.0,
         Block::Paragraph(_) => 62.0,
         Block::Divider => 32.0,
         Block::Heading { .. } => 82.0,
+        Block::Footnote { .. } => 24.0,
     }
 }
 
