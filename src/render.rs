@@ -9,9 +9,9 @@ use std::{
 
 use anyhow::{Context, Result};
 use printpdf::{
-    BuiltinFont, Color, Line, LineCapStyle, LinePoint, Mm, Op, PaintMode, PdfDocument,
-    PdfFontHandle, PdfPage, PdfSaveOptions, Point, Pt, RawImage, Rect, Rgb, Svg, TextItem,
-    XObjectId, XObjectTransform,
+    Actions, BorderArray, BuiltinFont, Color, ColorArray, HighlightingMode, Line, LineCapStyle,
+    LinePoint, LinkAnnotation, Mm, Op, PaintMode, PdfDocument, PdfFontHandle, PdfPage,
+    PdfSaveOptions, Point, Pt, RawImage, Rect, Rgb, Svg, TextItem, XObjectId, XObjectTransform,
 };
 use syntect::{
     easy::HighlightLines,
@@ -121,6 +121,7 @@ struct Fragment {
     kind: FragmentKind,
     style: Style,
     width: f32,
+    link: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -822,6 +823,16 @@ impl<'a> Renderer<'a> {
                     self.rect(frag_x, bg_y, frag.width + frag.style.pad_x * 2.0, bg_h, bg);
                 }
                 let text_x = frag_x + frag.style.pad_x;
+                if let Some(href) = &frag.link {
+                    let hit_h = link_hit_height(frag);
+                    self.link_annotation(
+                        text_x,
+                        baseline_y - link_hit_ascent(frag),
+                        decoration_width(frag),
+                        hit_h,
+                        href,
+                    );
+                }
                 match &frag.kind {
                     FragmentKind::Text(text) => {
                         let text_baseline_y = baseline_y + frag.style.shift_y;
@@ -930,6 +941,26 @@ impl<'a> Renderer<'a> {
             },
             Op::EndTextSection,
         ]);
+    }
+
+    fn link_annotation(&mut self, x: f32, y_top: f32, w: f32, h: f32, href: &str) {
+        if href.trim().is_empty() || w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        self.ops.push(Op::LinkAnnotation {
+            link: LinkAnnotation::new(
+                Rect::from_xywh(
+                    Pt(x),
+                    Pt(self.options.page_height_pt - y_top - h),
+                    Pt(w),
+                    Pt(h),
+                ),
+                Actions::uri(href.to_string()),
+                Some(BorderArray::Solid([0.0, 0.0, 0.0])),
+                Some(ColorArray::Transparent),
+                Some(HighlightingMode::None),
+            ),
+        });
     }
 
     fn rect(&mut self, x: f32, y_top: f32, w: f32, h: f32, color: (f32, f32, f32)) {
@@ -1149,6 +1180,7 @@ impl<'a> Renderer<'a> {
                             shift_y: 0.0,
                             pad_x: 0.0,
                         },
+                        link: None,
                     });
                 }
                 Inline::Emphasis(content) => {
@@ -1175,11 +1207,14 @@ impl<'a> Renderer<'a> {
                     self.push_inline_spans(content, style, spans)?;
                 }
                 Inline::Link { href, content } => {
-                    let _target = href;
                     let mut link_style = base;
                     link_style.color = (0.02, 0.28, 0.62);
                     link_style.underline = true;
+                    let start = spans.len();
                     self.push_inline_spans(content, link_style, spans)?;
+                    for fragment in &mut spans[start..] {
+                        fragment.link = Some(href.clone());
+                    }
                 }
                 Inline::FootnoteRef(label) => spans.push(text_fragment(
                     self.footnote_number(label).to_string(),
@@ -1212,6 +1247,7 @@ impl<'a> Renderer<'a> {
                         width: measure(&text, style.font, style.size),
                         kind: FragmentKind::Text(text),
                         style,
+                        link: None,
                     });
                 }
             }
@@ -1311,6 +1347,7 @@ fn text_fragment(text: String, style: Style) -> Fragment {
         width: measure(&text, style.font, style.size),
         kind: FragmentKind::Text(text),
         style,
+        link: None,
     }
 }
 
@@ -1336,7 +1373,8 @@ fn wrap_spans(spans: &[Fragment], max_width: f32) -> Vec<LayoutLine> {
                     if is_space && current.fragments.is_empty() {
                         continue;
                     }
-                    let frag = text_fragment(token, span.style);
+                    let mut frag = text_fragment(token, span.style);
+                    frag.link.clone_from(&span.link);
                     push_fragment(&mut lines, &mut current, frag, max_width);
                 }
             }
@@ -1384,7 +1422,8 @@ fn push_fragment(
     if advance > max_width {
         if let FragmentKind::Text(text) = &fragment.kind {
             for ch in text.chars() {
-                let piece = text_fragment(ch.to_string(), fragment.style);
+                let mut piece = text_fragment(ch.to_string(), fragment.style);
+                piece.link.clone_from(&fragment.link);
                 push_fragment(lines, current, piece, max_width);
             }
             return;
@@ -1399,7 +1438,7 @@ fn merge_adjacent_fragments(line: &mut LayoutLine) {
     let mut merged: Vec<Fragment> = Vec::new();
     for frag in line.fragments.drain(..) {
         if let Some(last) = merged.last_mut() {
-            if same_style(last.style, frag.style) {
+            if same_style(last.style, frag.style) && last.link == frag.link {
                 if let (FragmentKind::Text(last_text), FragmentKind::Text(text)) =
                     (&mut last.kind, &frag.kind)
                 {
@@ -1498,6 +1537,24 @@ fn fragment_descent(fragment: &Fragment) -> f32 {
     match &fragment.kind {
         FragmentKind::Text(_) => text_descent(fragment.style.font, fragment.style.size),
         FragmentKind::Math(math) => (math.height - math.baseline).max(0.0),
+    }
+}
+
+fn link_hit_ascent(fragment: &Fragment) -> f32 {
+    match &fragment.kind {
+        FragmentKind::Text(_) => text_ascent(fragment.style.font, fragment.style.size) + 1.5,
+        FragmentKind::Math(math) => math.baseline + 1.5,
+    }
+}
+
+fn link_hit_height(fragment: &Fragment) -> f32 {
+    match &fragment.kind {
+        FragmentKind::Text(_) => {
+            text_ascent(fragment.style.font, fragment.style.size)
+                + text_descent(fragment.style.font, fragment.style.size)
+                + 3.0
+        }
+        FragmentKind::Math(math) => math.height + 3.0,
     }
 }
 
@@ -1863,4 +1920,33 @@ fn estimated_keep_height(block: &Block) -> f32 {
 #[allow(dead_code)]
 fn plain(inlines: &[Inline]) -> String {
     inlines_to_plain_text(inlines)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renders_markdown_links_as_pdf_uri_annotations() {
+        let doc = crate::parser::parse_markdown(
+            "A [wrapped native PDF link](https://example.com/native-pdf) should be clickable.",
+        );
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let output = std::env::temp_dir().join(format!("native-mdpdf-link-test-{nonce}.pdf"));
+        let mut options = RenderOptions::default();
+        options.math_mode = MathMode::Fallback;
+        options.page_numbers = false;
+
+        render_pdf_with_options(&doc, &output, Path::new("."), options).unwrap();
+        let pdf = fs::read(&output).unwrap();
+        let _ = fs::remove_file(&output);
+        let pdf_text = String::from_utf8_lossy(&pdf);
+
+        assert!(pdf_text.contains("/Subtype/Link"));
+        assert!(pdf_text.contains("/S/URI"));
+        assert!(pdf_text.contains("https://example.com/native-pdf"));
+    }
 }
