@@ -538,9 +538,10 @@ impl<'a> Renderer<'a> {
         self.ensure_height(block_h + 4.0);
 
         let y = self.cursor_y;
-        self.text(
+        let baseline_y = text_baseline_y(y, line_h, style.font, style.size);
+        self.text_at_baseline(
             self.options.margin_x_pt,
-            y,
+            baseline_y,
             FontFace::SansBold,
             7.8,
             (0.42, 0.47, 0.54),
