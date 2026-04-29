@@ -181,7 +181,7 @@ impl Default for HeadingOptions {
                 first_space_before_pt: 6.0,
                 space_after_pt: 1.0,
             },
-            section_trailing_space_pt: 3.0,
+            section_trailing_space_pt: 5.0,
             keep_with_next_level1_to_3_pt: 126.0,
             keep_with_next_other_pt: 70.0,
         }
@@ -671,12 +671,11 @@ impl<'a> Renderer<'a> {
                 .get(idx + 1)
                 .map(|block| self.estimated_keep_height(block))
                 .unwrap_or(0.0);
-            let follows_heading = idx > 0
-                && matches!(
-                    doc.blocks.get(idx - 1),
-                    Some(Block::Heading { .. } | Block::Title(_) | Block::Subtitle(_))
-                );
-            self.render_block(block, idx == 0, follows_heading, next_keep)?;
+            let previous_heading_level = idx
+                .checked_sub(1)
+                .and_then(|prev| doc.blocks.get(prev))
+                .and_then(heading_level_of);
+            self.render_block(block, idx == 0, previous_heading_level, next_keep)?;
             if doc.blocks.get(idx + 1).is_some_and(is_heading_like) && !is_heading_like(block) {
                 self.add_space(self.options.headings.section_trailing_space_pt);
             }
@@ -764,14 +763,14 @@ impl<'a> Renderer<'a> {
         &mut self,
         block: &Block,
         first: bool,
-        follows_heading: bool,
+        previous_heading_level: Option<u8>,
         next_keep: f32,
     ) -> Result<()> {
         match block {
             Block::Title(content) => self.title_block(content),
             Block::Subtitle(content) => self.subtitle_block(content),
             Block::Heading { level, content } => {
-                self.heading(*level, content, first, follows_heading, next_keep)
+                self.heading(*level, content, first, previous_heading_level, next_keep)
             }
             Block::Paragraph(content) => self.paragraph(content),
             Block::CodeBlock { lang, text } => self.code_block(lang.as_deref(), text),
@@ -794,7 +793,7 @@ impl<'a> Renderer<'a> {
         level: u8,
         content: &[Inline],
         first: bool,
-        follows_heading: bool,
+        previous_heading_level: Option<u8>,
         next_keep: f32,
     ) -> Result<()> {
         let (size, line, mut before, after) = match level {
@@ -803,8 +802,8 @@ impl<'a> Renderer<'a> {
             3 => heading_metrics(self.options.headings.level3, first),
             _ => heading_metrics(self.options.headings.other, first),
         };
-        if follows_heading {
-            before = 0.0;
+        if let Some(previous_level) = previous_heading_level {
+            before = heading_pair_space(previous_level, level, &self.options.headings);
         }
         self.add_space(before);
 
@@ -1147,7 +1146,7 @@ impl<'a> Renderer<'a> {
                 let previous_margin = self.options.margin_x_pt;
                 self.options.margin_x_pt += list_w;
                 for child in &item.children {
-                    self.render_block(child, false, false, 0.0)?;
+                    self.render_block(child, false, None, 0.0)?;
                 }
                 self.options.margin_x_pt = previous_margin;
             }
@@ -2159,11 +2158,42 @@ fn heading_metrics(level: HeadingLevelOptions, first: bool) -> (f32, f32, f32, f
     )
 }
 
+fn heading_pair_space(previous_level: u8, current_level: u8, headings: &HeadingOptions) -> f32 {
+    let previous = heading_options_for_level(previous_level, headings);
+    let current = heading_options_for_level(current_level, headings);
+    let ratio = (current.size_pt / previous.size_pt).max(0.1);
+    let scale = if current_level > previous_level {
+        0.28 * ratio
+    } else if current_level == previous_level {
+        0.42
+    } else {
+        0.48 / ratio
+    };
+
+    (current.line_height_pt * scale).clamp(2.0, current.space_before_pt)
+}
+
+fn heading_options_for_level(level: u8, headings: &HeadingOptions) -> HeadingLevelOptions {
+    match level {
+        1 => headings.level1,
+        2 => headings.level2,
+        3 => headings.level3,
+        _ => headings.other,
+    }
+}
+
 fn is_heading_like(block: &Block) -> bool {
     matches!(
         block,
         Block::Heading { .. } | Block::Title(_) | Block::Subtitle(_)
     )
+}
+
+fn heading_level_of(block: &Block) -> Option<u8> {
+    match block {
+        Block::Heading { level, .. } => Some(*level),
+        _ => None,
+    }
 }
 
 fn wrap_spans(spans: &[Fragment], max_width: f32) -> Vec<LayoutLine> {

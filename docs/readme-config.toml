@@ -9,7 +9,7 @@ page_numbers = false
 title = "Pagedown"
 
 [paragraph]
-after_pt = 4.0
+after_pt = 3.0
 
 [headings.level1]
 size_pt = 26.0
@@ -31,7 +31,7 @@ pad_y_pt = 5.0
 title_height_pt = 9.0
 title_y_offset_pt = -0.5
 title_size_pt = 6.7
-after_pt = 4.0
+after_pt = 3.0
 rule_x_offset_pt = 3.0
 rule_y_inset_pt = 4.0
 rule_total_y_inset_pt = 8.0

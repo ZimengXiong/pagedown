@@ -13,18 +13,28 @@ fi
 
 echo "Converting $PDF_FILE to PNG..."
 
-# Try using ImageMagick first (preferred, better quality)
-if command -v convert &> /dev/null; then
+# Prefer macOS Quick Look because it uses the system PDF renderer and preserves text
+# positioning more faithfully than ImageMagick's PDF delegate path.
+if command -v qlmanage &> /dev/null; then
+    TMP_DIR="$(mktemp -d)"
+    qlmanage -t -s 1200 -o "$TMP_DIR" "$PDF_FILE" >/dev/null 2>&1
+    mv "$TMP_DIR/$(basename "$PDF_FILE").png" "$PNG_FILE"
+    rmdir "$TMP_DIR"
+    echo "✓ Successfully converted to $PNG_FILE using Quick Look"
+# Ghostscript is a stable cross-platform fallback when Quick Look is unavailable.
+elif command -v gs &> /dev/null; then
+    gs -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=png16m -dTextAlphaBits=4 -dGraphicsAlphaBits=4 -dBackgroundColor=16#ffffff -r150 -sOutputFile="$PNG_FILE" "$PDF_FILE"
+    echo "✓ Successfully converted to $PNG_FILE using Ghostscript"
+elif command -v magick &> /dev/null; then
+    magick -density 150 -quality 90 -background white -flatten "$PDF_FILE" "$PNG_FILE"
+    echo "✓ Successfully converted to $PNG_FILE using ImageMagick"
+elif command -v convert &> /dev/null; then
     convert -density 150 -quality 90 -background white -flatten "$PDF_FILE" "$PNG_FILE"
     echo "✓ Successfully converted to $PNG_FILE using ImageMagick"
-# Fallback to Ghostscript
-elif command -v gs &> /dev/null; then
-    gs -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=png16m -dBackgroundColor=16#ffffff -r150 -sOutputFile="$PNG_FILE" "$PDF_FILE"
-    echo "✓ Successfully converted to $PNG_FILE using Ghostscript"
 else
-    echo "Error: Neither ImageMagick (convert) nor Ghostscript (gs) found"
-    echo "Install one of them to use this script:"
-    echo "  - ImageMagick: brew install imagemagick"
+    echo "Error: No PDF rasterizer found"
+    echo "Install one of these to use this script:"
     echo "  - Ghostscript: brew install ghostscript"
+    echo "  - ImageMagick: brew install imagemagick"
     exit 1
 fi

@@ -23,10 +23,10 @@ image_caption_gap_pt = 5.0
 title = "Native Markdown PDF"
 
 [paragraph]
-after_pt = 6.0
+after_pt = 5.0
 
 [headings]
-section_trailing_space_pt = 4.0
+section_trailing_space_pt = 5.0
 keep_with_next_level1_to_3_pt = 126.0
 keep_with_next_other_pt = 70.0
 
@@ -64,7 +64,7 @@ pad_y_pt = 8.0
 title_height_pt = 11.0
 title_y_offset_pt = -1.0
 title_size_pt = 7.7
-after_pt = 8.0
+after_pt = 6.0
 rule_x_offset_pt = 4.0
 rule_y_inset_pt = 6.0
 rule_total_y_inset_pt = 12.0
@@ -77,12 +77,12 @@ content_width_inset_pt = 24.0
 vertical_padding_pt = 14.0
 draw_y_inset_pt = 7.0
 min_math_height_pt = 28.0
-after_pt = 8.0
+after_pt = 6.0
 
 [divider]
 keep_height_pt = 22.0
-space_before_pt = 8.0
-space_after_pt = 8.0
+space_before_pt = 6.0
+space_after_pt = 6.0
 x_inset_pt = 0.0
 thickness_pt = 0.9
 
@@ -92,7 +92,7 @@ pad_y_pt = 8.0
 title_height_pt = 10.0
 title_y_offset_pt = -0.5
 title_size_pt = 8.4
-after_pt = 7.0
+after_pt = 5.0
 rule_x_offset_pt = 4.0
 rule_y_inset_pt = 6.0
 rule_total_y_inset_pt = 12.0
@@ -100,7 +100,7 @@ rule_thickness_pt = 2.2
 
 [list]
 item_gap_pt = 2.5
-after_pt = 4.0
+after_pt = 3.0
 ensure_extra_pt = 8.0
 marker_indent_pt = 18.0
 marker_text_gap_pt = 6.0
@@ -130,7 +130,7 @@ ensure_extra_pt = 4.0
 cell_pad_x_pt = 7.0
 cell_pad_y_pt = 5.0
 border_thickness_pt = 0.45
-after_pt = 8.0
+after_pt = 6.0
 initial_keep_height_pt = 20.0
 row_ensure_extra_pt = 2.0
 
@@ -138,9 +138,9 @@ row_ensure_extra_pt = 2.0
 px_to_pt = 0.75
 border_outset_pt = 1.0
 caption_line_height_multiplier = 1.35
-block_after_pt = 8.0
+block_after_pt = 6.0
 placeholder_height_pt = 96.0
-placeholder_after_pt = 8.0
+placeholder_after_pt = 6.0
 placeholder_label_x_pt = 18.0
 placeholder_label_y_pt = 40.0
 placeholder_label_size_pt = 10.0
